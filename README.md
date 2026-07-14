@@ -160,7 +160,7 @@ const withdrawInstructions = await pumpAmmSdk.withdrawInstructions(
 
 ## License
 
-MIT
+All rights reserved. See [LICENSE](LICENSE).
 
 ## Links
 
