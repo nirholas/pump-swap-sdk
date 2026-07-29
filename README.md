@@ -15,7 +15,7 @@ npm install @pump-fun/pump-swap-sdk
 ## Usage
 
 ```typescript
-import { PumpAmmSdk } from "@pump-fun/swap-sdk";
+import { PumpAmmSdk } from "@pump-fun/pump-swap-sdk";
 
 // Initialize SDK
 const pumpAmmSdk = new PumpAmmSdk();
