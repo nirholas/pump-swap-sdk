@@ -9,7 +9,7 @@ The SDK is structured as follows:
 ## Installation
 
 ```bash
-npm install @pump-fun/pump-swap-sdk
+npm install @pump-fun/pump-swap-sdk 
 ```
 
 ## Usage
