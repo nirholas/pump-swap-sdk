@@ -83,7 +83,7 @@ const depositInstructions = await pumpAmmSdk.depositInstructions(
 The SDK supports bi-directional swaps:
 
 ```typescript
-const swapSolanaState = await this.pumpAmmlSdk.swapSolanaState(poolKey, user);
+const swapSolanaState = await this.pumpAmmSdk.swapSolanaState(poolKey, user);
 
 const { globalConfig, pool, poolBaseAmount, poolQuoteAmount } = swapSolanaState;
 
@@ -160,7 +160,7 @@ const withdrawInstructions = await pumpAmmSdk.withdrawInstructions(
 
 ## License
 
-All rights reserved. See [LICENSE](LICENSE).
+Licensed under the MIT License. See [LICENSE](LICENSE).
 
 ## Links
 
