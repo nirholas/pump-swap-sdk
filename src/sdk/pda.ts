@@ -52,6 +52,19 @@ export const PUMP_AMM_FEE_CONFIG_PDA = pumpFeePda([
   PUMP_AMM_PROGRAM_ID.toBuffer(),
 ]);
 
+/** pump's `Global` (`["global"]`), passed to `multi_hop_swap` for its curve hops. */
+export const PUMP_GLOBAL_PDA = pumpPda([Buffer.from("global")]);
+
+export const PUMP_EVENT_AUTHORITY_PDA = pumpPda([
+  Buffer.from("__event_authority"),
+]);
+
+/** pump-fees' `FeeConfig` for the pump program (the curves' fee schedule). */
+export const PUMP_FEE_CONFIG_PDA = pumpFeePda([
+  Buffer.from("fee_config"),
+  PUMP_PROGRAM_ID.toBuffer(),
+]);
+
 export function poolPda(
   index: number,
   owner: PublicKey,
@@ -84,12 +97,65 @@ export function pumpPoolAuthorityPda(mint: PublicKey): PublicKey {
   return pumpPda([Buffer.from("pool-authority"), mint.toBuffer()]);
 }
 
-export function canonicalPumpPoolPda(mint: PublicKey): PublicKey {
+/**
+ * The pump holder-rewards PDA of `mint` (`["holder-rewards", mint]` under the pump program): the
+ * `coinCreator` of a holder-reward coin's canonical pool (`Pool.isHolderReward`). Its coin-creator
+ * vault (`coinCreatorVaultAtaPda(coinCreatorVaultAuthorityPda(holderRewardsPda(mint)), ...)`)
+ * accrues the pool's creator fees; the pump program pays them out to holders.
+ */
+export function holderRewardsPda(mint: PublicKey): PublicKey {
+  return pumpPda([Buffer.from("holder-rewards"), mint.toBuffer()]);
+}
+
+export const MPL_TOKEN_METADATA_PROGRAM_ID = new PublicKey(
+  "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s",
+);
+
+/** The pump bonding curve of `mint` (`["bonding-curve", mint]` under the pump program). */
+export function bondingCurvePda(mint: PublicKey): PublicKey {
+  return pumpPda([Buffer.from("bonding-curve"), mint.toBuffer()]);
+}
+
+/**
+ * The Metaplex token metadata of `mint` (`["metadata", token metadata program, mint]` under that
+ * program). `set_coin_creator` reads a canonical pool's coin creator from it.
+ */
+export function metadataPda(mint: PublicKey): PublicKey {
+  return PublicKey.findProgramAddressSync(
+    [
+      Buffer.from("metadata"),
+      MPL_TOKEN_METADATA_PROGRAM_ID.toBuffer(),
+      mint.toBuffer(),
+    ],
+    MPL_TOKEN_METADATA_PROGRAM_ID,
+  )[0];
+}
+
+/**
+ * The quote mint a canonical pump pool is keyed by, given a bonding curve's `quote_mint`: SOL
+ * curves store the zero key, but the pool they graduate into is quoted in legacy WSOL.
+ */
+export function canonicalPoolQuoteMint(
+  bondingCurveQuoteMint: PublicKey,
+): PublicKey {
+  return bondingCurveQuoteMint.equals(PublicKey.default)
+    ? NATIVE_MINT
+    : bondingCurveQuoteMint;
+}
+
+/**
+ * The canonical pump pool of `mint`. `quoteMint` may be the pool's quote mint or the bonding
+ * curve's `quote_mint` (the zero key for SOL curves); both name the same pool.
+ */
+export function canonicalPumpPoolPda(
+  mint: PublicKey,
+  quoteMint: PublicKey = NATIVE_MINT,
+): PublicKey {
   return poolPda(
     CANONICAL_POOL_INDEX,
     pumpPoolAuthorityPda(mint),
     mint,
-    NATIVE_MINT,
+    canonicalPoolQuoteMint(quoteMint),
   );
 }
 
@@ -109,6 +175,35 @@ export function coinCreatorVaultAtaPda(
   return getAssociatedTokenAddressSync(
     quoteMint,
     coinCreatorVaultAuthority,
+    true,
+    quoteTokenProgram,
+  );
+}
+
+/**
+ * The pump-fees `SharingConfig` of `mint` (`["sharing-config", mint]` under the fee program). It is
+ * the coin creator of a pool whose creator fees are shared.
+ */
+export function feeSharingConfigPda(mint: PublicKey): PublicKey {
+  return pumpFeePda([Buffer.from("sharing-config"), mint.toBuffer()]);
+}
+
+export function poolV2Pda(baseMint: PublicKey): PublicKey {
+  return pumpAmmPda([Buffer.from("pool-v2"), baseMint.toBuffer()]);
+}
+
+export function boostVaultAuthorityPda(pool: PublicKey): PublicKey {
+  return pumpAmmPda([Buffer.from("boost_vault"), pool.toBuffer()]);
+}
+
+export function boostVaultAta(
+  boostVaultAuthority: PublicKey,
+  quoteMint: PublicKey,
+  quoteTokenProgram: PublicKey,
+): PublicKey {
+  return getAssociatedTokenAddressSync(
+    quoteMint,
+    boostVaultAuthority,
     true,
     quoteTokenProgram,
   );

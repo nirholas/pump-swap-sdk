@@ -24,9 +24,9 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   mod
 ));
 
-// node_modules/base64-js/index.js
+// node_modules/.pnpm/base64-js@1.5.1/node_modules/base64-js/index.js
 var require_base64_js = __commonJS({
-  "node_modules/base64-js/index.js"(exports) {
+  "node_modules/.pnpm/base64-js@1.5.1/node_modules/base64-js/index.js"(exports) {
     "use strict";
     exports.byteLength = byteLength;
     exports.toByteArray = toByteArray;
@@ -125,9 +125,9 @@ var require_base64_js = __commonJS({
   }
 });
 
-// node_modules/ieee754/index.js
+// node_modules/.pnpm/ieee754@1.2.1/node_modules/ieee754/index.js
 var require_ieee754 = __commonJS({
-  "node_modules/ieee754/index.js"(exports) {
+  "node_modules/.pnpm/ieee754@1.2.1/node_modules/ieee754/index.js"(exports) {
     "use strict";
     exports.read = function(buffer, offset, isLE, mLen, nBytes) {
       var e, m;
@@ -209,9 +209,9 @@ var require_ieee754 = __commonJS({
   }
 });
 
-// node_modules/buffer/index.js
+// node_modules/.pnpm/buffer@6.0.3/node_modules/buffer/index.js
 var require_buffer = __commonJS({
-  "node_modules/buffer/index.js"(exports) {
+  "node_modules/.pnpm/buffer@6.0.3/node_modules/buffer/index.js"(exports) {
     "use strict";
     var base64 = require_base64_js();
     var ieee754 = require_ieee754();
@@ -1781,7 +1781,7 @@ var require_buffer = __commonJS({
     function numberIsNaN(obj) {
       return obj !== obj;
     }
-    var hexSliceLookupTable = function() {
+    var hexSliceLookupTable = (function() {
       const alphabet = "0123456789abcdef";
       const table = new Array(256);
       for (let i = 0; i < 16; ++i) {
@@ -1791,7 +1791,7 @@ var require_buffer = __commonJS({
         }
       }
       return table;
-    }();
+    })();
     function defineBigIntMethod(fn) {
       return typeof BigInt === "undefined" ? BufferBigIntNotDefined : fn;
     }
@@ -1803,7 +1803,7 @@ var require_buffer = __commonJS({
 
 // src/sdk/sell.ts
 import BN3 from "bn.js";
-import { PublicKey as PublicKey2 } from "@solana/web3.js";
+import { PublicKey as PublicKey3 } from "@solana/web3.js";
 
 // src/sdk/util.ts
 import BN2 from "bn.js";
@@ -1850,9 +1850,20 @@ var PUMP_AMM_FEE_CONFIG_PDA = pumpFeePda([
   import_buffer.Buffer.from("fee_config"),
   PUMP_AMM_PROGRAM_ID.toBuffer()
 ]);
+var PUMP_GLOBAL_PDA = pumpPda([import_buffer.Buffer.from("global")]);
+var PUMP_EVENT_AUTHORITY_PDA = pumpPda([
+  import_buffer.Buffer.from("__event_authority")
+]);
+var PUMP_FEE_CONFIG_PDA = pumpFeePda([
+  import_buffer.Buffer.from("fee_config"),
+  PUMP_PROGRAM_ID.toBuffer()
+]);
 function pumpPoolAuthorityPda(mint) {
   return pumpPda([import_buffer.Buffer.from("pool-authority"), mint.toBuffer()]);
 }
+var MPL_TOKEN_METADATA_PROGRAM_ID = new PublicKey(
+  "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
+);
 
 // src/sdk/util.ts
 function ceilDiv(a, b) {
@@ -1867,20 +1878,45 @@ function fee(amount, basisPoints) {
 function isPumpPool(baseMint, poolCreator) {
   return pumpPoolAuthorityPda(baseMint).equals(poolCreator);
 }
+var PUMP_AMM_TOTAL_TOKEN_SUPPLY = new BN2("1000000000000000");
 function poolMarketCap({
   baseMintSupply,
   baseReserve,
-  quoteReserve
+  quoteReserve,
+  isMayhemMode = false
 }) {
   if (baseReserve.isZero()) {
     throw new Error(
       "Division by zero: pool base token reserves cannot be zero"
     );
   }
-  return quoteReserve.mul(baseMintSupply).div(baseReserve);
+  const circulatingSupply = isMayhemMode ? PUMP_AMM_TOTAL_TOKEN_SUPPLY : baseMintSupply;
+  return quoteReserve.mul(circulatingSupply).div(baseReserve);
 }
 
 // src/sdk/fees.ts
+import { PublicKey as PublicKey2 } from "@solana/web3.js";
+import { NATIVE_MINT as NATIVE_MINT2, NATIVE_MINT_2022 } from "@solana/spl-token";
+var USDC_MINT = new PublicKey2(
+  "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+);
+var STABLE_QUOTE_MINTS = Object.freeze([
+  USDC_MINT
+]);
+var SOL_LIKE_QUOTE_MINTS = Object.freeze([
+  PublicKey2.default,
+  NATIVE_MINT2,
+  NATIVE_MINT_2022
+]);
+function isSolLikeQuoteMint(quoteMint) {
+  return SOL_LIKE_QUOTE_MINTS.some((mint) => mint.equals(quoteMint));
+}
+function isStableQuoteMint(quoteMint) {
+  return STABLE_QUOTE_MINTS.some((mint) => mint.equals(quoteMint));
+}
+function isZeroFees(fees) {
+  return fees.lpFeeBps.isZero() && fees.protocolFeeBps.isZero() && fees.creatorFeeBps.isZero();
+}
 function computeFeesBps({
   globalConfig,
   feeConfig,
@@ -1889,20 +1925,24 @@ function computeFeesBps({
   baseMint,
   baseReserve,
   quoteReserve,
-  tradeSize
+  quoteMint = NATIVE_MINT2,
+  isMayhemMode = false,
+  creatorFeeBps
 }) {
   if (feeConfig != null) {
     const marketCap = poolMarketCap({
       baseMintSupply,
       baseReserve,
-      quoteReserve
+      quoteReserve,
+      isMayhemMode
     });
-    return getFees({
+    const fees = feesForQuoteMint({
       feeConfig,
       isPumpPool: isPumpPool(baseMint, creator),
       marketCap,
-      tradeSize
+      quoteMint
     });
+    return globalConfig.creatorFeeConfigurable && creatorFeeBps?.gtn(0) ? { ...fees, creatorFeeBps } : fees;
   }
   return {
     lpFeeBps: globalConfig.lpFeeBasisPoints,
@@ -1910,24 +1950,33 @@ function computeFeesBps({
     creatorFeeBps: globalConfig.coinCreatorFeeBasisPoints
   };
 }
-function getFees({
+function feesForQuoteMint({
   feeConfig,
   isPumpPool: isPumpPool2,
-  marketCap
+  marketCap,
+  quoteMint
 }) {
-  if (isPumpPool2) {
-    return calculateFeeTier({
-      feeTiers: feeConfig.feeTiers,
-      marketCap
-    });
-  } else {
+  if (!isPumpPool2) {
     return feeConfig.flatFees;
   }
+  if (isSolLikeQuoteMint(quoteMint)) {
+    return calculateFeeTier({ feeTiers: feeConfig.feeTiers, marketCap });
+  }
+  if (isStableQuoteMint(quoteMint)) {
+    return calculateFeeTier({
+      feeTiers: feeConfig.stableFeeTiers.length > 0 ? feeConfig.stableFeeTiers : feeConfig.feeTiers,
+      marketCap
+    });
+  }
+  return isZeroFees(feeConfig.exoticFlatFees) ? feeConfig.flatFees : feeConfig.exoticFlatFees;
 }
 function calculateFeeTier({
   feeTiers,
   marketCap
 }) {
+  if (feeTiers.length === 0) {
+    throw new Error("Fee tiers cannot be empty.");
+  }
   const firstTier = feeTiers[0];
   if (marketCap.lt(firstTier.marketCapLamportsThreshold)) {
     return firstTier.fees;
@@ -1946,19 +1995,25 @@ function sellBaseInput({
   slippage,
   baseReserve,
   quoteReserve,
+  virtualQuoteReserves = new BN3(0),
+  feeBucketsTotal = new BN3(0),
   globalConfig,
   baseMintAccount,
   baseMint,
   coinCreator,
   creator,
-  feeConfig
+  feeConfig,
+  quoteMint,
+  isMayhemMode,
+  creatorFeeBps
 }) {
   if (baseReserve.isZero() || quoteReserve.isZero()) {
     throw new Error(
       "Invalid input: 'baseReserve' or 'quoteReserve' cannot be zero."
     );
   }
-  const quoteAmountOut = quoteReserve.mul(base).div(baseReserve.add(base));
+  const effectiveQuoteReserve = quoteReserve.add(virtualQuoteReserves);
+  const quoteAmountOut = effectiveQuoteReserve.mul(base).div(baseReserve.add(base));
   const {
     lpFeeBps,
     protocolFeeBps,
@@ -1970,13 +2025,19 @@ function sellBaseInput({
     baseMintSupply: new BN3(baseMintAccount.supply.toString()),
     baseMint,
     baseReserve,
-    quoteReserve,
-    tradeSize: quoteAmountOut
+    quoteReserve: effectiveQuoteReserve,
+    quoteMint,
+    isMayhemMode,
+    creatorFeeBps
   });
   const lpFee = fee(quoteAmountOut, lpFeeBps);
   const protocolFee = fee(quoteAmountOut, protocolFeeBps);
-  const coinCreatorFee = PublicKey2.default.equals(coinCreator) ? new BN3(0) : fee(quoteAmountOut, coinCreatorFeeBps);
-  const finalQuote = quoteAmountOut.sub(lpFee).sub(protocolFee).sub(coinCreatorFee);
+  const coinCreatorFee = PublicKey3.default.equals(coinCreator) ? new BN3(0) : fee(quoteAmountOut, coinCreatorFeeBps);
+  const { userQuoteAmountOut: finalQuote } = sellAmounts(
+    quoteAmountOut,
+    { lpFee, protocolFee, coinCreatorFee },
+    quoteReserve.sub(feeBucketsTotal)
+  );
   if (finalQuote.isNeg()) {
     throw new Error("Fees exceed total output; final quote is negative.");
   }
@@ -1992,6 +2053,18 @@ function sellBaseInput({
     internalQuoteAmountOut: quoteAmountOut
   };
 }
+function sellAmounts(quoteAmountOut, fees, realQuoteReserves) {
+  const quoteAmountOutWithoutLpFee = quoteAmountOut.sub(fees.lpFee);
+  if (realQuoteReserves.lt(quoteAmountOutWithoutLpFee)) {
+    throw new Error(
+      "Insufficient real quote reserves to cover the sell output."
+    );
+  }
+  return {
+    quoteAmountOutWithoutLpFee,
+    userQuoteAmountOut: quoteAmountOutWithoutLpFee.sub(fees.coinCreatorFee).sub(fees.protocolFee)
+  };
+}
 var MAX_FEE_BASIS_POINTS = new BN3(1e4);
 function calculateQuoteAmountOut(userQuoteAmountOut, lpFeeBasisPoints, protocolFeeBasisPoints, coinCreatorFeeBasisPoints) {
   const totalFeeBasisPoints = lpFeeBasisPoints.add(protocolFeeBasisPoints).add(coinCreatorFeeBasisPoints);
@@ -2003,23 +2076,24 @@ function sellQuoteInput({
   slippage,
   baseReserve,
   quoteReserve,
+  virtualQuoteReserves = new BN3(0),
+  feeBucketsTotal = new BN3(0),
   globalConfig,
   baseMintAccount,
   baseMint,
   coinCreator,
   creator,
-  feeConfig
+  feeConfig,
+  quoteMint,
+  isMayhemMode,
+  creatorFeeBps
 }) {
   if (baseReserve.isZero() || quoteReserve.isZero()) {
     throw new Error(
       "Invalid input: 'baseReserve' or 'quoteReserve' cannot be zero."
     );
   }
-  if (quote.gt(quoteReserve)) {
-    throw new Error(
-      "Cannot receive more quote tokens than the pool quote reserves."
-    );
-  }
+  const effectiveQuoteReserve = quoteReserve.add(virtualQuoteReserves);
   const {
     lpFeeBps,
     protocolFeeBps,
@@ -2031,24 +2105,32 @@ function sellQuoteInput({
     baseMintSupply: new BN3(baseMintAccount.supply.toString()),
     baseMint,
     baseReserve,
-    quoteReserve,
-    tradeSize: quote
+    quoteReserve: effectiveQuoteReserve,
+    quoteMint,
+    isMayhemMode,
+    creatorFeeBps
   });
   const rawQuote = calculateQuoteAmountOut(
     quote,
     lpFeeBps,
     protocolFeeBps,
-    PublicKey2.default.equals(coinCreator) ? new BN3(0) : coinCreatorFeeBps
+    PublicKey3.default.equals(coinCreator) ? new BN3(0) : coinCreatorFeeBps
   );
-  if (rawQuote.gte(quoteReserve)) {
+  if (rawQuote.gte(effectiveQuoteReserve)) {
     throw new Error(
       "Invalid input: Desired quote amount exceeds available reserve."
     );
   }
   const baseAmountIn = ceilDiv(
     baseReserve.mul(rawQuote),
-    quoteReserve.sub(rawQuote)
+    effectiveQuoteReserve.sub(rawQuote)
   );
+  const quoteAmountOut = effectiveQuoteReserve.mul(baseAmountIn).div(baseReserve.add(baseAmountIn));
+  if (quoteReserve.sub(feeBucketsTotal).lt(quoteAmountOut.sub(fee(quoteAmountOut, lpFeeBps)))) {
+    throw new Error(
+      "Insufficient real quote reserves to cover the sell output."
+    );
+  }
   const precision = new BN3(1e9);
   const slippageFactorFloat = (1 - slippage / 100) * 1e9;
   const slippageFactor = new BN3(Math.floor(slippageFactorFloat));
@@ -2062,6 +2144,7 @@ function sellQuoteInput({
   };
 }
 export {
+  sellAmounts,
   sellBaseInput,
   sellQuoteInput
 };

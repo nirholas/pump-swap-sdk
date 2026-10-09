@@ -1,45 +1,61 @@
-# Pump Swap SDK 
+# Pump Swap SDK
 
-The SDK is structured as follows:
+TypeScript SDK for the Pump Swap AMM program (`pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA`).
 
-- `PumpAmmSdk` is the high level SDK, useful for UI integrations.
-- `PumpAmmInternalSdk` is the low level SDK, useful for programmatic integrations, allowing full customization of instructions.
-- `PumpAmmAdminSdk` is the SDK which allows access to admin-protected instructions.
+- `PumpAmmSdk` (singleton `PUMP_AMM_SDK`) builds instructions and decodes accounts fully
+  offline from a "Solana state" object.
+- `OnlinePumpAmmSdk` fetches those state objects over RPC (`swapSolanaState`,
+  `liquiditySolanaState`, `createPoolSolanaState`, `collectCoinCreatorFeeSolanaState`) and
+  reads balances.
+- `PumpAmmAdminSdk` builds the admin-gated instructions.
+- Pure pricing functions (`buyBaseInput`, `buyQuoteInput`, `sellBaseInput`, `sellQuoteInput`)
+  and fee helpers (`computeFeesBps`, `feesForQuoteMint`, `poolMarketCap`, ...) are exported
+  from the package root for callers that keep their own state.
+
+> This repository mirrors the published
+> [`@pump-fun/pump-swap-sdk`](https://www.npmjs.com/package/@pump-fun/pump-swap-sdk) package:
+> `src/` and `dist/` are the 2.1.0 release byte for byte, matching the October 2026 PumpSwap
+> program (v2 trades, multi-hop routes, fee sweeps, signed `virtual_quote_reserves`). The
+> repository adds a TypeScript and Jest setup to run the upstream specs, plus its own specs for
+> the v2 builders and negative virtual reserves. See [Development](#development).
 
 ## Installation
 
 ```bash
-npm install @pump-fun/pump-swap-sdk 
+npm install @pump-fun/pump-swap-sdk
 ```
 
 ## Usage
 
 ```typescript
-import { PumpAmmSdk } from "@pump-fun/pump-swap-sdk";
+import { Connection } from "@solana/web3.js";
+import { OnlinePumpAmmSdk, PUMP_AMM_SDK } from "@pump-fun/pump-swap-sdk";
 
-// Initialize SDK
-const pumpAmmSdk = new PumpAmmSdk();
+const connection = new Connection(rpcUrl);
+const onlineSdk = new OnlinePumpAmmSdk(connection);
 ```
+
+All amounts are `BN`s in the raw base units of the mint they refer to (lamports for wSOL,
+micro-units for USDC, ...). `slippage` is a percentage: `1` means 1%.
 
 ## Create pool
 
 ```typescript
-// Create a (base, quote) pool instructions
-const createPoolSolanaState = await this.pumpAmmSdk.createPoolSolanaState(
+const createPoolSolanaState = await onlineSdk.createPoolSolanaState(
   index,
   creator,
   baseMint,
   quoteMint,
 );
 
-const createPoolInstructions = await pumpAmmSdk.createPoolInstructions(
+const createPoolInstructions = await PUMP_AMM_SDK.createPoolInstructions(
   createPoolSolanaState,
   baseIn,
   quoteIn,
 );
 
-// Get initial pool price for UI
-const initialPoolPrice = pumpAmmSdk.createAutocompleteInitialPoolPrice(
+// Initial pool price for the UI
+const initialPoolPrice = await PUMP_AMM_SDK.createAutocompleteInitialPoolPrice(
   initialBase,
   initialQuote,
 );
@@ -47,31 +63,29 @@ const initialPoolPrice = pumpAmmSdk.createAutocompleteInitialPoolPrice(
 
 ## Deposit
 
-For depositing into a (quote, base) pool:
-
 ```typescript
-// When base input changes
-const liquiditySolanaState = await this.pumpAmmSdk.liquiditySolanaState(
+const liquiditySolanaState = await onlineSdk.liquiditySolanaState(
   poolKey,
   user,
 );
 
+// When the base input changes
 const { quote, lpToken } =
-  await pumpAmmSdk.depositAutocompleteQuoteAndLpTokenFromBase(
+  PUMP_AMM_SDK.depositAutocompleteQuoteAndLpTokenFromBase(
     liquiditySolanaState,
     base,
     slippage,
   );
 
+// When the quote input changes
 const { base, lpToken } =
-  await pumpAmmSdk.depositAutocompleteBaseAndLpTokenFromQuote(
+  PUMP_AMM_SDK.depositAutocompleteBaseAndLpTokenFromQuote(
     liquiditySolanaState,
     quote,
     slippage,
   );
 
-// Deposit instructions
-const depositInstructions = await pumpAmmSdk.depositInstructions(
+const depositInstructions = await PUMP_AMM_SDK.depositInstructions(
   liquiditySolanaState,
   lpToken,
   slippage,
@@ -80,87 +94,612 @@ const depositInstructions = await pumpAmmSdk.depositInstructions(
 
 ## Swap
 
-The SDK supports bi-directional swaps:
+`swapSolanaState` fetches the pool, its reserves, the global and fee configs, the two token
+programs (read from the mint owners, so Token-2022 quotes work) and the user's token accounts.
+The four `PUMP_AMM_SDK` swap builders price the trade with the pool's quote mint and mayhem
+flag, apply slippage, wrap and unwrap wSOL when the quote is legacy WSOL, and create the user's
+missing base ATA (buy) or quote ATA (sell); a buy on a non-wSOL quote expects the user's quote
+token account to exist.
 
 ```typescript
-const swapSolanaState = await this.pumpAmmlSdk.swapSolanaState(poolKey, user);
+const swapSolanaState = await onlineSdk.swapSolanaState(poolKey, user);
 
-const { globalConfig, pool, poolBaseAmount, poolQuoteAmount } = swapSolanaState;
-
-const baseReserve = poolBaseAmount;
-const quoteReserve = poolQuoteAmount;
-
-const { uiQuote } = buyBaseInputInternal(
-  baseAmount,
+// Buy `base` tokens, paying at most quote + slippage
+const buyInstructions = await PUMP_AMM_SDK.buyBaseInput(
+  swapSolanaState,
+  base,
   slippage,
-  baseReserve,
-  quoteReserve,
-  globalConfig,
-  pool.creator,
 );
 
-const { base } = buyQuoteInputInternal(
-  quoteAmount,
+// Spend `quote` tokens, receiving base - slippage
+const buyInstructions2 = await PUMP_AMM_SDK.buyQuoteInput(
+  swapSolanaState,
+  quote,
   slippage,
-  baseReserve,
-  quoteReserve,
-  globalConfig,
-  pool.creator,
 );
 
-const { uiQuote } = sellBaseInputInternal(
-  baseAmount,
+// Sell `base` tokens, receiving at least quote - slippage
+const sellInstructions = await PUMP_AMM_SDK.sellBaseInput(
+  swapSolanaState,
+  base,
   slippage,
-  baseReserve,
-  quoteReserve,
-  globalConfig,
-  pool.creator,
 );
 
-const { base } = sellQuoteInputInternal(
-  quoteAmount,
+// Receive `quote` tokens, selling at most base + slippage
+const sellInstructions2 = await PUMP_AMM_SDK.sellQuoteInput(
+  swapSolanaState,
+  quote,
   slippage,
-  baseReserve,
-  quoteReserve,
-  globalConfig,
-  pool.creator,
 );
-
-// Swap instructions
-await pumpAmmInternalSdk.buyBaseInput(swapSolanaState, baseAmount, slippage);
-
-await pumpAmmInternalSdk.sellBaseInput(swapSolanaState, baseAmount, slippage);
-
-await pumpAmmInternalSdk.buyQuoteInput(swapSolanaState, quoteAmount, slippage);
-
-await pumpAmmInternalSdk.sellQuoteInput(swapSolanaState, quoteAmount, slippage);
 ```
+
+To show a quote before building, or to build with explicit limits, use the pure functions and
+`buyInstructions` / `sellInstructions`:
+
+```typescript
+import { buyBaseInput, sellBaseInput } from "@pump-fun/pump-swap-sdk";
+
+const {
+  pool,
+  poolBaseAmount,
+  poolQuoteAmount,
+  globalConfig,
+  feeConfig,
+  baseMint,
+  baseMintAccount,
+} = swapSolanaState;
+
+const poolArgs = {
+  baseReserve: poolBaseAmount,
+  quoteReserve: poolQuoteAmount,
+  virtualQuoteReserves: pool.virtualQuoteReserves,
+  feeBucketsTotal: pool.protocolFees.add(pool.creatorFees), // sells only, see "v2 trades"
+  globalConfig,
+  feeConfig,
+  baseMint,
+  baseMintAccount,
+  coinCreator: pool.coinCreator,
+  creator: pool.creator,
+  quoteMint: pool.quoteMint, // selects the fee schedule, see below
+  isMayhemMode: pool.isMayhemMode, // selects the market-cap basis
+  creatorFeeBps: pool.creatorFeeBps, // per-pool creator fee, see "Configurable creator fee"
+};
+
+const { uiQuote, maxQuote } = buyBaseInput({ ...poolArgs, base, slippage });
+const buyInstructions = await PUMP_AMM_SDK.buyInstructions(
+  swapSolanaState,
+  base,
+  maxQuote,
+);
+
+const { uiQuote: quoteOut, minQuote } = sellBaseInput({
+  ...poolArgs,
+  base,
+  slippage,
+});
+const sellInstructions = await PUMP_AMM_SDK.sellInstructions(
+  swapSolanaState,
+  base,
+  minQuote,
+);
+```
+
+`buyQuoteInput` returns `{ base, maxQuote }` and `sellQuoteInput` returns `{ base, minQuote }`
+for the quote-driven directions.
+
+## v2 trades and fee sweeps
+
+`buy_v2`, `buy_exact_quote_in_v2` and `sell_v2` are leaner swaps (17 accounts, no remaining
+accounts, no pump-fees CPI) for every pool but a cashback coin's (`supportsTradeV2(pool)`; a
+cashback coin's creator fee is the buyer's cashback, which v2 never pays). They price exactly
+like `buy` / `sell` (non-pump pools pay the flat fees, as on v1), so the pure functions and
+slippage limits above apply unchanged. What differs is where the fees go:
+
+- The protocol fee, net of its buyback slice, and the coin-creator fee stay in the pool's quote
+  vault, booked in `Pool.protocolFees` / `Pool.creatorFees`, until the permissionless
+  `sweep_protocol_fee` / `sweep_creator_fee` pay them out (to a protocol fee recipient's quote ATA,
+  a reserved one on a mayhem pool, and to the coin-creator vault `collectCoinCreatorFee` pays
+  from). The LP fee goes to the reserves as before.
+- The buyback slice is paid in the trade to one account: a listed
+  `GlobalConfig.buybackFeeRecipients` entry's ATA for the pool's quote mint. A mayhem pool takes
+  no slice (its whole protocol fee accrues), but the account is checked on every trade. The
+  program never creates it, and the SDK picks a listed recipient at random (as v1 does), so every
+  listed recipient needs its ATA for a quote mint before v2 trades on that mint succeed.
+
+```typescript
+// The four high-level builders take { v2: true }: v2 on pools that support it, v1 elsewhere
+const buyInstructions = await PUMP_AMM_SDK.buyBaseInput(
+  swapSolanaState,
+  base,
+  slippage,
+  { v2: true },
+);
+
+// Explicit limits (the pool must support v2; the program refuses the others)
+await PUMP_AMM_SDK.buyV2Instructions(swapSolanaState, baseOut, maxQuoteIn);
+await PUMP_AMM_SDK.buyExactQuoteInV2Instructions(
+  swapSolanaState,
+  spendableQuoteIn,
+  minBaseOut, // must be > 0
+);
+await PUMP_AMM_SDK.sellV2Instructions(swapSolanaState, baseIn, minQuoteOut);
+
+// Sweeps: permissionless, payer pays a missing destination ATA; a no-op on an empty bucket
+await PUMP_AMM_SDK.sweepProtocolFeeInstruction({
+  payer,
+  poolKey,
+  pool,
+  quoteTokenProgram,
+  globalConfig,
+});
+await PUMP_AMM_SDK.sweepCreatorFeeInstruction({
+  payer,
+  poolKey,
+  pool,
+  quoteTokenProgram,
+});
+await onlineSdk.sweepCreatorFeeInstruction(poolKey, payer); // reads pool and quote program
+```
+
+The programs refuse to change a pool's coin creator or its fee shares while `Pool.creatorFees`
+is nonzero (pump-amm `CreatorFeesNotSwept` 6081, pump-fees `PoolCreatorFeesNotSwept` 6033): a CTO
+(pump `admin_cto`), a fee-sharing config creation (pump-fees `create_fee_sharing_config`) or a
+shares rewrite (`update_fee_shares` / `update_fee_shares_v2`) for a coin with v2 volume must
+carry `sweep_creator_fee` for its pool before it, in the same transaction (a v2 trade between
+two transactions refills the bucket). Until it is swept, a creator's v2 fees are in the pool, not
+in the vault `getCoinCreatorVaultBalance` reads and `collectCoinCreatorFee` pays out; prepend the
+sweep of each pool to collect them too.
+
+## Multi-hop routes
+
+`multi_hop_swap` spends an exact input along a chain of canonical, non-mayhem pump pools and
+pump bonding curves, SOL or token quoted (every hop buying, or every hop selling) and checks slippage
+once, on the final amount. Fees are charged per route, not per hop: the protocol fee once on the
+leg trading the user's currency, the creator (and, on a pool, LP) fee once on the leg trading the
+far coin.
+
+```typescript
+import { MultiHopQuoteHop, multiHopSwapQuote } from "@pump-fun/pump-swap-sdk";
+
+// Pool hops and the configs in two RPC round trips
+const {
+  globalConfig,
+  feeConfig,
+  hops: poolHops,
+} = await onlineSdk.multiHopPoolHops([poolKeyAB, poolKeyBC]);
+
+// A curve hop is priced by the caller, charging only `legs`, see below
+const curveHop: MultiHopQuoteHop = {
+  kind: "curve",
+  baseMint,
+  quoteMint,
+  baseTokenProgram,
+  quoteTokenProgram,
+  quote: (amountIn, { isBuy, legs }) => priceCurveHop(amountIn, isBuy, legs),
+};
+const hops: MultiHopQuoteHop[] = [...poolHops, curveHop];
+
+const { minAmountOut } = multiHopSwapQuote({
+  inMint,
+  hops,
+  amountIn,
+  slippage,
+  globalConfig,
+  feeConfig,
+});
+const instructions = await PUMP_AMM_SDK.multiHopSwapInstructions({
+  user,
+  inMint,
+  venues: hops,
+  amountIn,
+  minAmountOut,
+  globalConfig,
+  // a buyback recipient wallet; required when the protocol leg is a curve (pump Global's list)
+  buybackFeeRecipient,
+});
+```
+
+- A curve hop's `quote` must price it as pump's `multi_hop_curve_swap` does: only the components
+  in `legs` (never an LP fee), and a buy spends its whole input. A full-fee v3 quote under-quotes
+  every hop that is not both legs; for an exact figure on a route with curves, simulate the
+  transaction.
+- A SOL bonding curve can only sit at the user's end of a route (first hop of a buy, last of a
+  sell). A buy starting on one pays `amountIn` from the wallet's SOL, not from WSOL; the builder
+  only ensures the user's WSOL ATA exists. A sell ending on one is unwrapped like any WSOL output.
+- The buyback recipient's ATA for the protocol leg's quote mint (WSOL on a SOL curve) must exist (on a pool leg the
+  recipient is picked at random from `GlobalConfig.buybackFeeRecipients`, so all of them need it).
+- Set a compute-unit limit of about 50k CU per hop: four hops already exceed the 200k default.
+- Routes are capped at `MULTI_HOP_MAX_HOPS` (6) hops, and a six-hop route at three pool hops: the
+  programs' 32 KiB heap holds no more. Three hops fit a legacy transaction; longer routes need a
+  v0 transaction with a lookup table.
 
 ## Withdraw
 
 ```typescript
-const liquiditySolanaState = await this.pumpAmmSdk.liquiditySolanaState(
+const liquiditySolanaState = await onlineSdk.liquiditySolanaState(
   poolKey,
   user,
 );
 
-const { base, quote } = pumpAmmSdk.withdrawAutocompleteBaseAndQuoteFromLpToken(
-  liquiditySolanaState,
-  lpAmount,
-  slippage,
-);
+const { base, quote } =
+  PUMP_AMM_SDK.withdrawAutoCompleteBaseAndQuoteFromLpToken(
+    liquiditySolanaState,
+    lpAmount,
+    slippage,
+  );
 
-// Withdraw instructions
-const withdrawInstructions = await pumpAmmSdk.withdrawInstructions(
+const withdrawInstructions = await PUMP_AMM_SDK.withdrawInstructions(
   liquiditySolanaState,
   lpToken,
   slippage,
 );
 ```
 
+## Creator fees
+
+A coin creator's AMM fees accumulate in a vault ATA per quote mint
+(`coinCreatorVaultAtaPda(coinCreatorVaultAuthorityPda(coinCreator), quoteMint, quoteTokenProgram)`).
+`collectCoinCreatorFeeSolanaState` and `getCoinCreatorVaultBalance` default the quote mint to
+legacy WSOL, so existing SOL-only callers are unchanged; `getCoinCreatorVaultBalances` and
+`transferCreatorFeesToPumpV2Instruction` take it explicitly (offline, together with the quote
+token program). The online methods accept a bonding curve's zero key as WSOL (like
+`canonicalPumpPoolPda`) and, when the token program is not passed, read it from the mint
+account's owner, which must be SPL Token or Token-2022.
+
+```typescript
+import {
+  NATIVE_MINT,
+  TOKEN_2022_PROGRAM_ID,
+  TOKEN_PROGRAM_ID,
+} from "@solana/spl-token";
+import { USDC_MINT } from "@pump-fun/pump-swap-sdk";
+
+// Collect: SOL-quoted coins (unchanged call) ...
+const solState = await onlineSdk.collectCoinCreatorFeeSolanaState(coinCreator);
+// ... or a USDC / quote-control / Token-2022-quoted coin
+const usdcState = await onlineSdk.collectCoinCreatorFeeSolanaState(
+  coinCreator,
+  undefined, // destination token account; defaults to the creator's ATA
+  USDC_MINT,
+);
+const collectInstructions = await PUMP_AMM_SDK.collectCoinCreatorFee(
+  usdcState,
+  payer, // optional; defaults to the creator
+);
+
+// Balances
+const solFees = await onlineSdk.getCoinCreatorVaultBalance(coinCreator);
+const usdcFees = await onlineSdk.getCoinCreatorVaultBalance(
+  coinCreator,
+  USDC_MINT,
+);
+const allFees = await onlineSdk.getCoinCreatorVaultBalances(coinCreator, [
+  { mint: NATIVE_MINT, tokenProgram: TOKEN_PROGRAM_ID },
+  { mint: USDC_MINT, tokenProgram: TOKEN_PROGRAM_ID },
+  { mint: xStockMint, tokenProgram: TOKEN_2022_PROGRAM_ID },
+]); // Map<base58 quote mint, BN>
+
+// Fee-sharing coins: move the AMM vault into the pump program's creator vault
+const transferInstruction =
+  await onlineSdk.transferCreatorFeesToPumpV2Instruction(
+    payer,
+    coinCreator, // the coin's sharing config PDA once fee sharing is enabled
+    quoteMint,
+  );
+// Offline: PUMP_AMM_SDK.transferCreatorFeesToPumpV2Instruction({ payer, coinCreator, quoteMint, quoteTokenProgram })
+```
+
+`collectCoinCreatorFee` transfers between two token accounts the program does not create: the
+builder creates the vault ATA and the creator's destination ATA (rent paid by `payer`) when they
+are missing, for any quote mint and either token program. A custom destination
+(`coinCreatorTokenAccount`, any token account the creator owns) is accepted but must already
+exist. A wSOL payout is unwrapped by closing the creator's wSOL ATA, only when the creator is
+the payer.
+
+`transferCreatorFeesToPumpV2` unwraps a wSOL vault into the pump creator vault PDA and moves
+any other quote into that PDA's quote ATA, which the program creates when missing (rent paid by
+`payer`). Its account list carries `pump_creator_vault_ata` even for wSOL; `quoteTokenProgram`
+must be the quote mint's owner program.
+
+Which quote mints a creator's vaults may hold is decided by the pump program (its `Global`
+whitelist and `QuoteControl` list, read with `@pump-fun/pump-sdk`); this SDK keeps no static
+list of quote mints.
+
+## Canonical pump pools
+
+Coins that graduate from a pump bonding curve trade in a canonical pool keyed by the base mint
+and the quote mint:
+
+```typescript
+import {
+  canonicalPumpPoolPda,
+  canonicalPoolQuoteMint,
+} from "@pump-fun/pump-swap-sdk";
+
+canonicalPumpPoolPda(mint); // SOL coin (quote = legacy WSOL)
+canonicalPumpPoolPda(mint, USDC_MINT); // USDC coin
+canonicalPumpPoolPda(mint, bondingCurve.quoteMint); // the curve's zero key means WSOL
+```
+
+`canonicalPoolQuoteMint` maps a bonding curve's `quote_mint` to the pool's quote mint (the zero
+key SOL curves store becomes legacy WSOL). A canonical pool's coin creator changes only through a
+community takeover on the pump program (`admin_cto`, `@pump-fun/pump-sdk`'s `adminCtoInstruction`):
+pump-amm's `admin_cto_pool` accepts pump's pool-authority PDA as its only caller, so this SDK has no
+builder for it and `PumpAmmAdminSdk.adminSetCoinCreator` is gone with the instruction.
+
+A canonical pool without a coin creator gets one through the permissionless `set_coin_creator`
+(from the coin's Metaplex metadata, else its bonding curve):
+
+```typescript
+// Reads the pool (any length), derives metadata / bonding_curve from its base mint and
+// prepends extend_account (rent paid by payer) when the pool is not grown yet
+const setCoinCreator = await onlineSdk.setCoinCreatorInstructions(
+  poolKey,
+  payer,
+);
+// Offline: PUMP_AMM_SDK.setCoinCreator(poolKey, baseMint)
+```
+
+## Quote mints and fees
+
+pump-fees selects a trade's fee schedule from the pool and its quote mint
+(`FeeConfig::fees_for_quote_mint`); `feesForQuoteMint` mirrors it and the pure pricing
+functions apply it when given `quoteMint`:
+
+| Pool                      | Quote mint                                                                                           | Schedule                                                                             |
+| ------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| not a canonical pump pool | any                                                                                                  | `flatFees`                                                                           |
+| canonical pump pool       | SOL-like (`SOL_LIKE_QUOTE_MINTS`: the zero key, legacy WSOL `So111…112`, Token-2022 native `9pan9…`) | `feeTiers` by market cap                                                             |
+| canonical pump pool       | listed stable (`STABLE_QUOTE_MINTS`: USDC `EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v`)            | `stableFeeTiers` by market cap (`feeTiers` when the FeeConfig predates stable tiers) |
+| canonical pump pool       | anything else (quote-control mints, xStock Token-2022 quotes, devnet USDC)                           | `exoticFlatFees`, or `flatFees` while the exotic schedule is unset (all zero)        |
+
+Market cap is `poolMarketCap({ baseMintSupply, baseReserve, quoteReserve, isMayhemMode })` =
+`quoteReserve * circulatingSupply / baseReserve`, with `circulatingSupply` the live mint supply,
+or the fixed `PUMP_AMM_TOTAL_TOKEN_SUPPLY` (1e15) for mayhem pools. It is denominated in the
+quote's base units, and so is `FeeTier.marketCapLamportsThreshold` of the matching tier set:
+lamports for `feeTiers`, USDC micro-units for `stableFeeTiers`. The stable set is hardcoded here
+because it is hardcoded on-chain; changing it is a program upgrade.
+
+Things to know when a pool is not quoted in SOL:
+
+- Devnet USDC (`4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`) is whitelisted by the devnet pump
+  program but is not a pump-fees stable, so a devnet USDC pool pays exotic/flat fees once the
+  quote-control fee program is deployed there. The SDK mirrors the program; it does not
+  special-case devnet.
+- Amounts are raw base units; the SDK does no decimal scaling. xStock Token-2022 quotes carry
+  the `ScaledUiAmount` extension (a UI-only multiplier that leaves raw amounts and on-chain
+  math untouched) and `Pausable` (every trade fails while the issuer has the mint paused).
+- Token-2022 quote token accounts carry extensions and are 170-182 bytes, not 165. Decoding the
+  fixed 165-byte prefix for `amount` is fine; asserting the length or passing the SPL Token
+  program id to `getAccount` is not. `getCoinCreatorVaultBalance` uses `unpackAccount`.
+- Trades on Token-2022-quoted pools use more compute than SPL-quoted ones. Set an explicit
+  compute budget of roughly 250-300k CU for them.
+- The program validates the buyback fee recipient's quote ATA (the recipient's associated token
+  account for the quote mint under the quote token program) but does not create it; the
+  protocol fee recipient's ATA and the creator vault ATA are created on demand with the trader
+  paying rent. Operators must provision the buyback recipients' ATAs for every new quote mint
+  before the first trade, or every swap on that pool fails.
+- `FeeConfig` has three layouts. `FEE_CONFIG_SIZE_PRE_STABLE` (2512), `FEE_CONFIG_SIZE_POST_STABLE`
+  (4073) and `FEE_CONFIG_SIZE_POST_EXOTIC` (4097) are the account lengths of each;
+  `PUMP_AMM_SDK.decodeFeeConfig` reads only the fields the account's length carries, so older
+  accounts decode with `stableFeeTiers = []` and `exoticFlatFees` all zero.
+
+### Migration notes
+
+- Direct callers of `buyBaseInput`, `buyQuoteInput`, `sellBaseInput`, `sellQuoteInput` and
+  `computeFeesBps` should pass `quoteMint: pool.quoteMint`, `isMayhemMode: pool.isMayhemMode`,
+  `virtualQuoteReserves: pool.virtualQuoteReserves` and `creatorFeeBps: pool.creatorFeeBps`.
+  Omitting `quoteMint` prices with the SOL schedule (byte-identical to earlier versions), which
+  is wrong for USDC and other non-SOL pools; omitting `creatorFeeBps` prices with the schedule's
+  creator rate, which is wrong for a pool with a configured creator fee. The `PUMP_AMM_SDK`
+  builders pass them for you.
+- `canonicalPumpPoolPda(mint, PublicKey.default)` now derives the WSOL pool (it used to derive a
+  pool that does not exist).
+- `collectCoinCreatorFeeSolanaState` and `getCoinCreatorVaultBalance` gained trailing quote-mint
+  parameters that default to WSOL. `collectCoinCreatorFee` now creates missing vault and
+  destination ATAs for non-SOL quotes too (it used to create them for wSOL only).
+
+## Configurable creator fee
+
+A canonical pump pool can carry its own creator fee rate, `Pool.creatorFeeBps`, in place of the
+creator rate of the pump-fees schedule its trades would otherwise pay (the bonding curve the
+coin graduated from has the same field on the pump side). The rule, mirrored by `computeFeesBps`
+from pump-amm `compute_fees`:
+
+- `GlobalConfig.creatorFeeConfigurable` is a program-wide gate. While it is off, stored per-pool
+  rates are neither accepted by a CTO nor read by trades.
+- `Pool.creatorFeeBps == 0` means "not configured": the schedule's creator rate applies. Any
+  nonzero value replaces it. LP and protocol rates are never touched, and the has-coin-creator
+  rule still zeroes the creator fee of a pool without one.
+- A new canonical pool receives the bonding curve's values through `create_pool`'s trailing
+  `creator_fee_bps` / `can_edit_creator_fee` / `is_holder_reward` arguments, passed by pump's
+  `migrate` / `migrate_v2` CPI (a canonical pool's creator is pump's pool-authority PDA, which
+  signs only there). `PUMP_AMM_SDK.createPoolInstructions` creates permissionless pools, so it
+  always encodes the three as 0 / false / false and accepts
+  `{ creatorFeeBps, canEditCreatorFee, isHolderReward }` only to keep the encoding aligned with
+  the IDL: a nonzero rate or `canEditCreatorFee` built through it fails on-chain with
+  `OnlyCanonicalPumpPoolsCanHaveCoinCreator`, and `isHolderReward` is stored as `false`.
+- The rate changes afterwards only through a community takeover: pump's `admin_cto` CPIs pump-amm's
+  `admin_cto_pool` (signed by pump's pool-authority PDA, its only accepted caller) with the new
+  coin creator, the holder-reward flag and an optional rate in
+  `1..=GlobalConfig.maxConfigurableCreatorFeeBps`; a rate is only accepted on a quote that is
+  neither SOL nor USDC (`CreatorFeeNotConfigurableForQuote`), never on a cashback pool
+  (`CreatorFeeNotAllowedForCashbackCoin`) and never on a mayhem pool (`CtoNotAllowedForMayhemPool`).
+  Build it with `@pump-fun/pump-sdk` (`adminCtoInstruction` / `OnlinePumpSdk.adminCtoInstructions`);
+  `AdminCtoPoolEvent` records the pool side. `Pool.canEditCreatorFee` is retired: nothing sets or
+  reads it, and `set_coin_creator_fee_bps`, `admin_set_coin_creator_fee_editable` and
+  `admin_set_coin_creator` no longer exist (nor their SDK builders).
+
+```typescript
+import { PumpAmmAdminSdk } from "@pump-fun/pump-swap-sdk";
+
+// Admin: turn the feature on (also grows the GlobalConfig account after the upgrade)
+const adminSdk = new PumpAmmAdminSdk(connection);
+const enable = await adminSdk.updateCreatorFeeConfig(true, new BN(500)); // max 5%
+```
+
+The `PUMP_AMM_SDK` swap builders price a configured pool correctly. Direct callers of the pure
+pricing functions and `computeFeesBps` pass `creatorFeeBps: pool.creatorFeeBps`; omitting it
+prices with the schedule, exactly as before.
+
+Deploy-order caveat: accounts written before the upgrades are shorter (`Pool` 261 or 270 instead
+of `POOL_SIZE` = 271 bytes, `GlobalConfig` 940 instead of `GLOBAL_CONFIG_SIZE` = 949) and read as
+"not configured" (`creatorFeeBps` 0, `canEditCreatorFee` false, `isHolderReward` false, gate off).
+They keep trading, but program instructions that serialize the whole struct fail on them until
+they are grown: `update_creator_fee_config` and `admin_cto_pool` grow their own account (the
+signer pays the rent), and the `PUMP_AMM_SDK` swap and liquidity builders already prepend the
+permissionless `extend_account` when a pool is shorter than `POOL_ACCOUNT_NEW_SIZE`. `decodePool`,
+`decodeGlobalConfig` and `PumpAmmAdminSdk.fetchGlobalConfigAccount` read every historical length.
+
+## Holder-reward pools
+
+A holder-reward coin pays its creator fee to its holders instead of a creator. Its canonical pool
+has `Pool.isHolderReward = true` and, as `coinCreator`, the coin's pump holder-rewards PDA
+(`holderRewardsPda(baseMint)`, `["holder-rewards", mint]` under the pump program). Nothing else
+changes for a trader or an indexer: the creator fee is computed and charged exactly as on any other
+canonical pool and lands in that PDA's coin-creator vault
+(`coinCreatorVaultAtaPda(coinCreatorVaultAuthorityPda(pool.coinCreator), quoteMint, quoteTokenProgram)`),
+which the permissionless `collect_coin_creator_fee` / `transfer_creator_fees_to_pump*` move onto
+the PDA; the pump program then pays holders out. `BuyEvent` / `SellEvent` report the fee twice,
+in the unchanged `coin_creator_fee` / `coin_creator_fee_basis_points` and in the new
+`holder_rewards` / `holder_rewards_bps` (zero on any other pool). The flag is set at migration from
+the bonding curve or by a CTO and never cleared; a holder-reward pool's coin creator cannot be
+changed (`HolderRewardCreatorImmutable`).
+
+### Migration notes (v2 trades and fee buckets)
+
+- `Pool` gained `protocolFees: BN` and `creatorFees: BN` (`POOL_SIZE` 271 -> 287; shorter pools
+  decode with both 0). Hand-built literals need them.
+- `Pool.virtualQuoteReserves` no longer means "boost sigma": every v2 accrual is subtracted from
+  it, so it can be negative on a plain pool. `vault + virtualQuoteReserves` still prices the pool
+  (every pricing function is unchanged), but only the vault less `protocolFees + creatorFees` is
+  liquidity, and the boost sigma is `virtualQuoteReserves + protocolFees + creatorFees`. Do not
+  read a nonzero `virtualQuoteReserves` as a boosted pool.
+- `sellBaseInput` / `sellQuoteInput` take `feeBucketsTotal`
+  (`pool.protocolFees.add(pool.creatorFees)`) and check the sell against the vault net of it, as
+  the program does; the `PumpAmmSdk` sell builders pass it, direct callers of the pure functions
+  should too (it defaults to 0). `sellQuoteInput` now checks the gross outflow of the sell it
+  produces instead of only the user's quote, so it throws "Insufficient real quote reserves to
+  cover the sell output." where it used to throw "Cannot receive more quote tokens than the pool
+  quote reserves." and on boosted pools where it used to build a sell the program refuses.
+- Deposits and withdrawals are priced against the vault net of the buckets
+  (`depositBaseInput`, `depositQuoteInput`, `depositInstructions`, `withdrawInputs`).
+- v2 trades emit the usual `BuyEvent` / `SellEvent` with a zero-key `protocol_fee_recipient`
+  (the fee was accrued, not paid) and `buyback_fee` the amount paid in the trade; v2 buys set
+  `ix_name` to `buy_v2` / `buy_exact_quote_in_v2`. Every `BuyEvent` / `SellEvent` (v1, v2 and
+  boost) now ends with `creator_fee_unclaimed`, the pool's creator bucket after the trade; logs
+  from before it decode with 0. Sweeps emit `SweepPoolFeeEvent` (`bucket` 0 protocol, 1
+  creator).
+
+### Migration notes (creator fee and holder rewards)
+
+- `Pool` gained `creatorFeeBps: BN`, `canEditCreatorFee: boolean` and `isHolderReward: boolean`;
+  `GlobalConfig` gained `creatorFeeConfigurable: boolean` and `maxConfigurableCreatorFeeBps: BN`.
+  All are required (the decoders always populate them), so hand-built literals need them.
+- Every `create_pool` instruction is 10 bytes longer: the three trailing arguments are always
+  encoded, as 0 / false / false when unset. The program ignores trailing bytes it does not read.
+- `PumpAmmAdminSdk.fetchGlobalConfigAccount` returns the SDK `GlobalConfig` type (same field
+  names as before) and reads pre-upgrade accounts; Anchor's raw `fetch` throws on them with this
+  IDL.
+- `CreatePoolEvent` logs emitted before the trailing fields existed no longer decode with the
+  vendored IDL (a trailing `bool` is read past the end of the log). Append 1 zero byte to a log
+  from the configurable-creator-fee program (no `is_holder_reward`) or 10 to an older one before
+  decoding; they then read the missing fields at their defaults. `BuyEvent` / `SellEvent` logs
+  from before `holder_rewards_bps` / `holder_rewards` decode with both at 0 (a u64 read past the
+  end is 0), so treat 0 as "not reported" on such logs.
+- With this IDL, Anchor's account resolver decodes a fetched `Pool` with the 287-byte layout, so
+  a `getPumpAmmProgram(connection).methods.*.accountsPartial({ pool })` call that leaves a
+  pool-seeded account to Anchor (`set_coin_creator`'s `metadata` / `bonding_curve`,
+  `migrate_pool_coin_creator`'s `pool` / `sharing_config`, a swap's
+  `coin_creator_vault_authority`) fails on a pool shorter than that with "Reached maximum
+  depth for account resolution". Pass those accounts explicitly, or decode the pool with
+  `decodePool`; every `PUMP_AMM_SDK` builder does.
+- `PumpAmmSdk.setCoinCreator(pool, baseMint?)` gained `baseMint`, from which it derives
+  `metadata` and `bonding_curve` (`metadataPda`, `bondingCurvePda`); without it the call still
+  needs a connection, which the offline program does not have.
+  `OnlinePumpAmmSdk.setCoinCreatorInstructions(poolKey, payer)` reads the pool (any length) and
+  prepends `extend_account` when it is not grown.
+- Removed with their instructions: `PumpAmmAdminSdk.adminSetCoinCreator`,
+  `PumpAmmSdk.setCoinCreatorFeeBpsInstruction` / `adminSetCoinCreatorFeeEditableInstruction`,
+  `OnlinePumpAmmSdk.setCoinCreatorFeeBpsInstructions` / `adminSetCoinCreatorFeeEditableInstructions`.
+  `AdminSetCoinCreatorEvent`, `SetCoinCreatorFeeBpsEvent` and `AdminSetCoinCreatorFeeEditableEvent`
+  are gone from the IDL; `AdminCtoPoolEvent` replaces them.
+- `claim_cashback.user_wsol_token_account` lost its ATA constraint in the IDL (any token account
+  of the quote mint owned by the user); `accountsPartial` callers must now pass it explicitly.
+  No builder in this SDK uses `claimCashback`. Cashback coins can no longer be created (pump's
+  `create_v2` rejects them); existing cashback pools are unchanged.
+
+## Negative virtual quote reserves
+
+`Pool.virtualQuoteReserves` is a signed `i128`. Every v2 trade books its protocol and creator fee
+in `Pool.protocolFees` / `Pool.creatorFees` and subtracts the same amount from
+`virtualQuoteReserves`, so on a plain pool with v2 volume the value is negative:
+
+| Quantity | Formula |
+|---|---|
+| Effective quote reserve (prices every trade) | `vault + virtualQuoteReserves` |
+| Real liquidity (caps every sell) | `vault - protocolFees - creatorFees` |
+| Boost sigma | `virtualQuoteReserves + protocolFees + creatorFees` |
+
+Every quote path in 2.1.0 (`buyBaseInput`, `buyQuoteInput`, `sellBaseInput`, `sellQuoteInput`,
+the `PumpAmmSdk` builders and `multiHopSwapQuote`) adds the signed value with `BN`, so a negative
+reserve lowers the effective quote reserve instead of raising it, and values beyond 2^53 keep
+full precision. A sweep moves the bucket out of the vault and zeroes it, which leaves
+`vault + virtualQuoteReserves` and therefore every quote unchanged:
+
+```typescript
+import { PUMP_AMM_SDK, sellBaseInput } from "@pump-fun/pump-swap-sdk";
+
+const pool = PUMP_AMM_SDK.decodePool(poolAccountInfo); // virtualQuoteReserves may be negative
+const { uiQuote, minQuote } = sellBaseInput({
+  base,
+  slippage,
+  baseReserve: poolBaseAmount,
+  quoteReserve: poolQuoteAmount, // the raw vault balance
+  virtualQuoteReserves: pool.virtualQuoteReserves, // signed, pass it as is
+  feeBucketsTotal: pool.protocolFees.add(pool.creatorFees),
+  globalConfig,
+  feeConfig,
+  baseMint: pool.baseMint,
+  baseMintAccount,
+  coinCreator: pool.coinCreator,
+  creator: pool.creator,
+  quoteMint: pool.quoteMint,
+  isMayhemMode: pool.isMayhemMode,
+  creatorFeeBps: pool.creatorFeeBps,
+});
+```
+
+Never take `abs()` of the value or store it in an unsigned type: either one prices the pool as
+if the fee buckets were extra liquidity and overpays on every sell.
+
+## Development
+
+```bash
+git clone https://github.com/nirholas/pump-swap-sdk.git
+cd pump-swap-sdk
+npm install
+npm run typecheck   # tsc --noEmit over src
+npm test            # jest, specs in src/__tests__
+```
+
+- `src/__tests__/tradeV2Flows.spec.ts` checks that `buy_v2`, `buy_exact_quote_in_v2` and
+  `sell_v2` carry one 17-account list with none of the v1 payout accounts, that their limits
+  encode, and that `sweep_creator_fee` pays into exactly the vault `collect_coin_creator_fee`
+  drains, so the sweep and the claim compose in one transaction.
+- `src/__tests__/negativeVirtualQuoteReserves.spec.ts` checks all four quote functions against an
+  independent constant-product reference at negative virtual reserves, decodes a negative
+  `i128` from raw pool bytes, and proves a fee sweep does not move any builder's limits.
+- Three upstream specs need the network: `buy.spec.ts` "debug quote errors" (two cases) reads
+  the live devnet fee config, and `buyQuoteSimulation.spec.ts` simulates against a local
+  validator on `127.0.0.1:8899`. They fail offline.
+- `dist/` is the published build, copied from the npm tarball. The repository carries no tsup
+  config, so `npm run build` does not regenerate it; refresh `dist/` from the next release
+  tarball instead.
+
 ## License
 
-All rights reserved. See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
 
 ## Links
 
@@ -168,7 +707,7 @@ All rights reserved. See [LICENSE](LICENSE).
 
 ## Documentation
 
-Full documentation site: **https://nirholas.github.io/pump-swap-sdk/**
+Documentation site: **https://nirholas.github.io/pump-swap-sdk/**
 
 - [Getting started](docs/getting-started.md) covers install and first run.
-- [Examples](docs/examples.md) has copy-paste snippets.
+- [Examples](docs/examples.md) has copy-paste snippets for v2 trades, sweeps and multi-hop routes.

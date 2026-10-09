@@ -24,9 +24,9 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   mod
 ));
 
-// node_modules/base64-js/index.js
+// node_modules/.pnpm/base64-js@1.5.1/node_modules/base64-js/index.js
 var require_base64_js = __commonJS({
-  "node_modules/base64-js/index.js"(exports) {
+  "node_modules/.pnpm/base64-js@1.5.1/node_modules/base64-js/index.js"(exports) {
     "use strict";
     exports.byteLength = byteLength;
     exports.toByteArray = toByteArray;
@@ -125,9 +125,9 @@ var require_base64_js = __commonJS({
   }
 });
 
-// node_modules/ieee754/index.js
+// node_modules/.pnpm/ieee754@1.2.1/node_modules/ieee754/index.js
 var require_ieee754 = __commonJS({
-  "node_modules/ieee754/index.js"(exports) {
+  "node_modules/.pnpm/ieee754@1.2.1/node_modules/ieee754/index.js"(exports) {
     "use strict";
     exports.read = function(buffer, offset, isLE, mLen, nBytes) {
       var e, m;
@@ -209,9 +209,9 @@ var require_ieee754 = __commonJS({
   }
 });
 
-// node_modules/buffer/index.js
+// node_modules/.pnpm/buffer@6.0.3/node_modules/buffer/index.js
 var require_buffer = __commonJS({
-  "node_modules/buffer/index.js"(exports) {
+  "node_modules/.pnpm/buffer@6.0.3/node_modules/buffer/index.js"(exports) {
     "use strict";
     var base64 = require_base64_js();
     var ieee754 = require_ieee754();
@@ -1781,7 +1781,7 @@ var require_buffer = __commonJS({
     function numberIsNaN(obj) {
       return obj !== obj;
     }
-    var hexSliceLookupTable = function() {
+    var hexSliceLookupTable = (function() {
       const alphabet = "0123456789abcdef";
       const table = new Array(256);
       for (let i = 0; i < 16; ++i) {
@@ -1791,7 +1791,7 @@ var require_buffer = __commonJS({
         }
       }
       return table;
-    }();
+    })();
     function defineBigIntMethod(fn) {
       return typeof BigInt === "undefined" ? BufferBigIntNotDefined : fn;
     }
@@ -1843,6 +1843,14 @@ var PUMP_AMM_FEE_CONFIG_PDA = pumpFeePda([
   import_buffer.Buffer.from("fee_config"),
   PUMP_AMM_PROGRAM_ID.toBuffer()
 ]);
+var PUMP_GLOBAL_PDA = pumpPda([import_buffer.Buffer.from("global")]);
+var PUMP_EVENT_AUTHORITY_PDA = pumpPda([
+  import_buffer.Buffer.from("__event_authority")
+]);
+var PUMP_FEE_CONFIG_PDA = pumpFeePda([
+  import_buffer.Buffer.from("fee_config"),
+  PUMP_PROGRAM_ID.toBuffer()
+]);
 function poolPda(index, owner, baseMint, quoteMint) {
   return pumpAmmPda([
     import_buffer.Buffer.from("pool"),
@@ -1866,12 +1874,34 @@ function lpMintAta(lpMint, owner) {
 function pumpPoolAuthorityPda(mint) {
   return pumpPda([import_buffer.Buffer.from("pool-authority"), mint.toBuffer()]);
 }
-function canonicalPumpPoolPda(mint) {
+function holderRewardsPda(mint) {
+  return pumpPda([import_buffer.Buffer.from("holder-rewards"), mint.toBuffer()]);
+}
+var MPL_TOKEN_METADATA_PROGRAM_ID = new PublicKey(
+  "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
+);
+function bondingCurvePda(mint) {
+  return pumpPda([import_buffer.Buffer.from("bonding-curve"), mint.toBuffer()]);
+}
+function metadataPda(mint) {
+  return PublicKey.findProgramAddressSync(
+    [
+      import_buffer.Buffer.from("metadata"),
+      MPL_TOKEN_METADATA_PROGRAM_ID.toBuffer(),
+      mint.toBuffer()
+    ],
+    MPL_TOKEN_METADATA_PROGRAM_ID
+  )[0];
+}
+function canonicalPoolQuoteMint(bondingCurveQuoteMint) {
+  return bondingCurveQuoteMint.equals(PublicKey.default) ? NATIVE_MINT : bondingCurveQuoteMint;
+}
+function canonicalPumpPoolPda(mint, quoteMint = NATIVE_MINT) {
   return poolPda(
     CANONICAL_POOL_INDEX,
     pumpPoolAuthorityPda(mint),
     mint,
-    NATIVE_MINT
+    canonicalPoolQuoteMint(quoteMint)
   );
 }
 function userVolumeAccumulatorPda(user) {
@@ -1888,22 +1918,51 @@ function coinCreatorVaultAtaPda(coinCreatorVaultAuthority, quoteMint, quoteToken
     quoteTokenProgram
   );
 }
+function feeSharingConfigPda(mint) {
+  return pumpFeePda([import_buffer.Buffer.from("sharing-config"), mint.toBuffer()]);
+}
+function poolV2Pda(baseMint) {
+  return pumpAmmPda([import_buffer.Buffer.from("pool-v2"), baseMint.toBuffer()]);
+}
+function boostVaultAuthorityPda(pool) {
+  return pumpAmmPda([import_buffer.Buffer.from("boost_vault"), pool.toBuffer()]);
+}
+function boostVaultAta(boostVaultAuthority, quoteMint, quoteTokenProgram) {
+  return getAssociatedTokenAddressSync(
+    quoteMint,
+    boostVaultAuthority,
+    true,
+    quoteTokenProgram
+  );
+}
 export {
   CANONICAL_POOL_INDEX,
   GLOBAL_CONFIG_PDA,
   GLOBAL_VOLUME_ACCUMULATOR_PDA,
+  MPL_TOKEN_METADATA_PROGRAM_ID,
   PUMP_AMM_EVENT_AUTHORITY_PDA,
   PUMP_AMM_FEE_CONFIG_PDA,
   PUMP_AMM_PROGRAM_ID,
+  PUMP_EVENT_AUTHORITY_PDA,
+  PUMP_FEE_CONFIG_PDA,
   PUMP_FEE_PROGRAM_ID,
+  PUMP_GLOBAL_PDA,
   PUMP_MINT,
   PUMP_PROGRAM_ID,
+  bondingCurvePda,
+  boostVaultAta,
+  boostVaultAuthorityPda,
+  canonicalPoolQuoteMint,
   canonicalPumpPoolPda,
   coinCreatorVaultAtaPda,
   coinCreatorVaultAuthorityPda,
+  feeSharingConfigPda,
+  holderRewardsPda,
   lpMintAta,
   lpMintPda,
+  metadataPda,
   poolPda,
+  poolV2Pda,
   pumpAmmPda,
   pumpFeePda,
   pumpPda,

@@ -1,10 +1,27 @@
 import { expect } from "chai";
 import BN from "bn.js";
 import { clusterApiUrl, Connection, PublicKey } from "@solana/web3.js";
-import { RawMint } from "@solana/spl-token";
-import { sellBaseInput } from "../sdk/sell";
-import { createFeeConfigFromGlobalConfig } from "./utils";
-import { GlobalConfig, Pool } from "../types/sdk";
+import { NATIVE_MINT, RawMint } from "@solana/spl-token";
+import { sellBaseInput, sellQuoteInput } from "../sdk/sell";
+import { USDC_MINT } from "../sdk/fees";
+import { PUMP_FEE_PROGRAM_ID, pumpPoolAuthorityPda } from "../sdk/pda";
+import {
+  createFeeConfigFromGlobalConfig,
+  createSwapSolanaState,
+  decodePumpAmmInstruction,
+  fees,
+  feeTier,
+  ZERO_FEES,
+} from "./utils";
+import { MAINNET_FEE_CONFIG_DATA_BASE64 } from "./feeConfigMainnetFixture";
+import {
+  FeeConfig,
+  Fees,
+  GlobalConfig,
+  Pool,
+  SellBaseInputResult,
+  SellQuoteInputResult,
+} from "../types/sdk";
 import { OnlinePumpAmmSdk } from "../sdk/onlinePumpAmm";
 import { PUMP_AMM_SDK } from "../sdk/offlinePumpAmm";
 
@@ -36,6 +53,12 @@ describe("sellBaseInput", () => {
     coinCreator: PublicKey.default,
     isMayhemMode: false,
     isCashbackCoin: false,
+    virtualQuoteReserves: new BN(0),
+    creatorFeeBps: new BN(0),
+    canEditCreatorFee: false,
+    isHolderReward: false,
+    protocolFees: new BN(0),
+    creatorFees: new BN(0),
   };
 
   const globalConfig: GlobalConfig = {
@@ -50,6 +73,13 @@ describe("sellBaseInput", () => {
     reservedFeeRecipient: PublicKey.unique(),
     mayhemModeEnabled: false,
     reservedFeeRecipients: [],
+    isCashbackEnabled: false,
+    buybackFeeRecipients: [],
+    buybackBasisPoints: new BN(0),
+    boostAuthority: PublicKey.default,
+    boostEnabled: false,
+    creatorFeeConfigurable: false,
+    maxConfigurableCreatorFeeBps: new BN(0),
   };
 
   const feeConfig = createFeeConfigFromGlobalConfig(globalConfig);
@@ -154,6 +184,13 @@ describe("sellBaseInput", () => {
       reservedFeeRecipient: PublicKey.unique(),
       mayhemModeEnabled: false,
       reservedFeeRecipients: [],
+      isCashbackEnabled: false,
+      buybackFeeRecipients: [],
+      buybackBasisPoints: new BN(0),
+      boostAuthority: PublicKey.default,
+      boostEnabled: false,
+      creatorFeeConfigurable: false,
+      maxConfigurableCreatorFeeBps: new BN(0),
     };
 
     const highFeeConfig = createFeeConfigFromGlobalConfig(highFeeGlobalConfig);
@@ -184,5 +221,285 @@ describe("sellBaseInput", () => {
         10
       );
     }).to.not.throw();
+  });
+});
+
+describe("sell quote mint fee selection (offline)", () => {
+  const baseMintAccount: RawMint = {
+    mintAuthorityOption: 0,
+    mintAuthority: PublicKey.unique(),
+    supply: BigInt(1),
+    decimals: 9,
+    isInitialized: false,
+    freezeAuthorityOption: 0,
+    freezeAuthority: PublicKey.unique(),
+  };
+
+  // Recipients are needed for the PumpAmmSdk wrappers, which build the full instruction.
+  const globalConfig: GlobalConfig = {
+    admin: PublicKey.unique(),
+    lpFeeBasisPoints: new BN(30),
+    protocolFeeBasisPoints: new BN(20),
+    disableFlags: 0,
+    protocolFeeRecipients: [PublicKey.unique()],
+    coinCreatorFeeBasisPoints: new BN(0),
+    adminSetCoinCreatorAuthority: PublicKey.unique(),
+    whitelistPda: PublicKey.unique(),
+    reservedFeeRecipient: PublicKey.unique(),
+    mayhemModeEnabled: false,
+    reservedFeeRecipients: [],
+    isCashbackEnabled: false,
+    buybackFeeRecipients: [PublicKey.unique()],
+    buybackBasisPoints: new BN(0),
+    boostAuthority: PublicKey.default,
+    boostEnabled: false,
+    creatorFeeConfigurable: false,
+    maxConfigurableCreatorFeeBps: new BN(0),
+  };
+
+  // One tier per schedule with a zero threshold, so every market cap selects it and the three
+  // schedules are told apart purely by their fee values.
+  const solFees = fees(30, 20, 0);
+  const stableFees = fees(100, 50, 0);
+  const exoticFlatFees = fees(200, 100, 0);
+  const feeConfig: FeeConfig = {
+    admin: PublicKey.unique(),
+    flatFees: fees(25, 5, 0),
+    feeTiers: [feeTier(0, solFees)],
+    stableFeeTiers: [feeTier(0, stableFees)],
+    exoticFlatFees,
+  };
+  // The same config with `tierFees` on the SOL schedule: pricing quote X against `feeConfig` must
+  // equal pricing WSOL against `withSolTiers(<the fees X selects>)`.
+  const withSolTiers = (tierFees: Fees): FeeConfig => ({
+    ...feeConfig,
+    feeTiers: [feeTier(0, tierFees)],
+  });
+
+  const baseMint = PublicKey.unique();
+  const common = {
+    slippage: 1,
+    baseReserve: new BN(1_000_000_000_000),
+    quoteReserve: new BN(2_000_000_000),
+    globalConfig,
+    baseMintAccount,
+    baseMint,
+    coinCreator: PublicKey.default,
+    creator: pumpPoolAuthorityPda(baseMint), // canonical pump pool: tiered schedules apply
+    feeConfig,
+  };
+  const base = new BN(10_000_000_000);
+  const quote = new BN(50_000_000);
+
+  const sellBaseRow = (r: SellBaseInputResult) =>
+    [r.uiQuote, r.minQuote, r.internalQuoteAmountOut].map(String);
+  const sellQuoteRow = (r: SellQuoteInputResult) =>
+    [r.internalRawQuote, r.base, r.minQuote].map(String);
+
+  it("omitting quoteMint prices exactly like WSOL", () => {
+    expect(sellBaseRow(sellBaseInput({ ...common, base }))).to.deep.equal(
+      sellBaseRow(sellBaseInput({ ...common, base, quoteMint: NATIVE_MINT })),
+    );
+    expect(sellQuoteRow(sellQuoteInput({ ...common, quote }))).to.deep.equal(
+      sellQuoteRow(
+        sellQuoteInput({ ...common, quote, quoteMint: NATIVE_MINT }),
+      ),
+    );
+  });
+
+  it("a USDC pool pays the stable schedule", () => {
+    const sol = sellBaseInput({ ...common, base });
+    const usdc = sellBaseInput({ ...common, base, quoteMint: USDC_MINT });
+    expect(sellBaseRow(usdc)).to.deep.equal(
+      sellBaseRow(
+        sellBaseInput({ ...common, base, feeConfig: withSolTiers(stableFees) }),
+      ),
+    );
+    // The pre-fee output is the same trade; the user receives less after the higher fees.
+    expect(usdc.internalQuoteAmountOut.toString()).to.equal(
+      sol.internalQuoteAmountOut.toString(),
+    );
+    expect(usdc.uiQuote.lt(sol.uiQuote)).to.be.true;
+    expect(usdc.minQuote.lt(sol.minQuote)).to.be.true;
+
+    const solQ = sellQuoteInput({ ...common, quote });
+    const usdcQ = sellQuoteInput({ ...common, quote, quoteMint: USDC_MINT });
+    expect(sellQuoteRow(usdcQ)).to.deep.equal(
+      sellQuoteRow(
+        sellQuoteInput({
+          ...common,
+          quote,
+          feeConfig: withSolTiers(stableFees),
+        }),
+      ),
+    );
+    // Receiving the same quote net of higher fees takes more base tokens.
+    expect(usdcQ.base.gt(solQ.base)).to.be.true;
+    expect(usdcQ.minQuote.toString()).to.equal(solQ.minQuote.toString()); // quote * slippage
+  });
+
+  it("an unlisted quote pays the exotic flat fees, or flat fees while they are unset", () => {
+    const exoticQuote = PublicKey.unique();
+    expect(
+      sellBaseRow(sellBaseInput({ ...common, base, quoteMint: exoticQuote })),
+    ).to.deep.equal(
+      sellBaseRow(
+        sellBaseInput({
+          ...common,
+          base,
+          feeConfig: withSolTiers(exoticFlatFees),
+        }),
+      ),
+    );
+    const unset: FeeConfig = { ...feeConfig, exoticFlatFees: ZERO_FEES };
+    expect(
+      sellBaseRow(
+        sellBaseInput({
+          ...common,
+          base,
+          feeConfig: unset,
+          quoteMint: exoticQuote,
+        }),
+      ),
+    ).to.deep.equal(
+      sellBaseRow(
+        sellBaseInput({
+          ...common,
+          base,
+          feeConfig: withSolTiers(feeConfig.flatFees),
+        }),
+      ),
+    );
+  });
+
+  it("SOL pools keep their pre-change amounts (live mainnet FeeConfig goldens)", () => {
+    // Recorded with the code before `quoteMint` existed; the SOL schedule must not move.
+    const mainnet = PUMP_AMM_SDK.decodeFeeConfig({
+      data: Buffer.from(MAINNET_FEE_CONFIG_DATA_BASE64, "base64"),
+      executable: false,
+      lamports: 0,
+      owner: PUMP_FEE_PROGRAM_ID,
+    });
+    const golden = {
+      ...common,
+      baseMintAccount: {
+        ...baseMintAccount,
+        supply: BigInt("1000000000000000"),
+      },
+      baseReserve: new BN("500000000000000"),
+      coinCreator: PublicKey.unique(),
+      feeConfig: mainnet,
+    };
+
+    expect(
+      sellBaseRow(
+        sellBaseInput({
+          ...golden,
+          quoteReserve: new BN("50000000000"),
+          base: new BN("1000000000000"),
+        }),
+      ),
+    ).to.deep.equal(["98552892", "97567363", "99800399"]);
+    expect(
+      sellBaseRow(
+        sellBaseInput({
+          ...golden,
+          coinCreator: PublicKey.default,
+          quoteReserve: new BN("1000000000000"),
+          virtualQuoteReserves: new BN("30000000000"),
+          slippage: 5,
+          base: new BN("10000000000000"),
+          quoteMint: NATIVE_MINT,
+        }),
+      ),
+    ).to.deep.equal(["20145588234", "19138308822", "20196078431"]);
+    expect(
+      sellQuoteRow(
+        sellQuoteInput({
+          ...golden,
+          quoteReserve: new BN("250000000000"),
+          slippage: 0,
+          quote: new BN("1000000000"),
+        }),
+      ),
+    ).to.deep.equal(["1012145749", "2032520325228", "1000000000"]);
+    expect(
+      sellQuoteRow(
+        sellQuoteInput({
+          ...golden,
+          coinCreator: PublicKey.default,
+          quoteReserve: new BN("10000000000000"),
+          virtualQuoteReserves: new BN("30000000000"),
+          quote: new BN("50000000000"),
+          quoteMint: NATIVE_MINT,
+        }),
+      ),
+    ).to.deep.equal(["50125313284", "2511319773921", "49500000000"]);
+    // Non-pump pool: flat fees.
+    expect(
+      sellBaseRow(
+        sellBaseInput({
+          ...golden,
+          creator: PublicKey.unique(),
+          quoteReserve: new BN("50000000000"),
+          base: new BN("1000000000000"),
+        }),
+      ),
+    ).to.deep.equal(["99500997", "98505987", "99800399"]);
+  });
+
+  it("PumpAmmSdk.sellBaseInput / sellQuoteInput price with the pool's quote mint", async () => {
+    const state = createSwapSolanaState({
+      globalConfig,
+      feeConfig,
+      quoteMint: USDC_MINT,
+      baseMintAccount,
+      poolBaseAmount: common.baseReserve,
+      poolQuoteAmount: common.quoteReserve,
+    });
+    const poolArgs = {
+      ...common,
+      baseMint: state.baseMint,
+      creator: state.pool.creator,
+    };
+
+    const fromBase = decodePumpAmmInstruction<{
+      baseAmountIn: BN;
+      minQuoteAmountOut: BN;
+    }>(await PUMP_AMM_SDK.sellBaseInput(state, base, common.slippage), "sell");
+    const expectedBase = sellBaseInput({
+      ...poolArgs,
+      base,
+      quoteMint: USDC_MINT,
+    });
+    expect(fromBase.baseAmountIn.toString()).to.equal(base.toString());
+    expect(fromBase.minQuoteAmountOut.toString()).to.equal(
+      expectedBase.minQuote.toString(),
+    );
+    expect(fromBase.minQuoteAmountOut.toString()).to.not.equal(
+      sellBaseInput({ ...poolArgs, base }).minQuote.toString(),
+    );
+
+    const fromQuote = decodePumpAmmInstruction<{
+      baseAmountIn: BN;
+      minQuoteAmountOut: BN;
+    }>(
+      await PUMP_AMM_SDK.sellQuoteInput(state, quote, common.slippage),
+      "sell",
+    );
+    const expectedQuote = sellQuoteInput({
+      ...poolArgs,
+      quote,
+      quoteMint: USDC_MINT,
+    });
+    expect(fromQuote.baseAmountIn.toString()).to.equal(
+      expectedQuote.base.toString(),
+    );
+    expect(fromQuote.minQuoteAmountOut.toString()).to.equal(
+      expectedQuote.minQuote.toString(),
+    );
+    expect(fromQuote.baseAmountIn.toString()).to.not.equal(
+      sellQuoteInput({ ...poolArgs, quote }).base.toString(),
+    );
   });
 });

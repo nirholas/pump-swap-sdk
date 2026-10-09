@@ -1,15 +1,17 @@
-export { CANONICAL_POOL_INDEX, GLOBAL_CONFIG_PDA, GLOBAL_VOLUME_ACCUMULATOR_PDA, PUMP_AMM_EVENT_AUTHORITY_PDA, PUMP_AMM_FEE_CONFIG_PDA, PUMP_AMM_PROGRAM_ID, PUMP_FEE_PROGRAM_ID, PUMP_MINT, PUMP_PROGRAM_ID, canonicalPumpPoolPda, coinCreatorVaultAtaPda, coinCreatorVaultAuthorityPda, lpMintAta, lpMintPda, poolPda, pumpAmmPda, pumpFeePda, pumpPda, pumpPoolAuthorityPda, userVolumeAccumulatorPda } from './sdk/pda.js';
+export { CANONICAL_POOL_INDEX, GLOBAL_CONFIG_PDA, GLOBAL_VOLUME_ACCUMULATOR_PDA, MPL_TOKEN_METADATA_PROGRAM_ID, PUMP_AMM_EVENT_AUTHORITY_PDA, PUMP_AMM_FEE_CONFIG_PDA, PUMP_AMM_PROGRAM_ID, PUMP_EVENT_AUTHORITY_PDA, PUMP_FEE_CONFIG_PDA, PUMP_FEE_PROGRAM_ID, PUMP_GLOBAL_PDA, PUMP_MINT, PUMP_PROGRAM_ID, bondingCurvePda, boostVaultAta, boostVaultAuthorityPda, canonicalPoolQuoteMint, canonicalPumpPoolPda, coinCreatorVaultAtaPda, coinCreatorVaultAuthorityPda, feeSharingConfigPda, holderRewardsPda, lpMintAta, lpMintPda, metadataPda, poolPda, poolV2Pda, pumpAmmPda, pumpFeePda, pumpPda, pumpPoolAuthorityPda, userVolumeAccumulatorPda } from './sdk/pda.js';
 export { PumpAmmAdminSdk } from './sdk/pumpAmmAdmin.js';
 export { OnlinePumpAmmSdk } from './sdk/onlinePumpAmm.js';
-export { OFFLINE_PUMP_AMM_PROGRAM, POOL_ACCOUNT_NEW_SIZE, PUMP_AMM_SDK, PumpAmmSdk } from './sdk/offlinePumpAmm.js';
+export { FEE_CONFIG_SIZE_POST_EXOTIC, FEE_CONFIG_SIZE_POST_STABLE, FEE_CONFIG_SIZE_PRE_STABLE, GLOBAL_CONFIG_SIZE, OFFLINE_PUMP_AMM_PROGRAM, POOL_ACCOUNT_NEW_SIZE, POOL_SIZE, PUMP_AMM_SDK, PumpAmmSdk, TradeOptions } from './sdk/offlinePumpAmm.js';
 export { buyBaseInput, buyQuoteInput } from './sdk/buy.js';
 export { sellBaseInput, sellQuoteInput } from './sdk/sell.js';
+export { SOL_LIKE_QUOTE_MINTS, STABLE_QUOTE_MINTS, USDC_MINT, calculateFeeTier, computeFeesBps, feesForQuoteMint, getBuybackFeeRecipient, getFeeRecipient, isSolLikeQuoteMint, isStableQuoteMint, isZeroFees } from './sdk/fees.js';
+export { MULTI_HOP_MAX_HOPS, MultiHopCurveQuoteHop, MultiHopCurveVenue, MultiHopLegFees, MultiHopPoolQuoteHop, MultiHopPoolVenue, MultiHopQuoteHop, MultiHopRoute, MultiHopVenue, multiHopSwapQuote, resolveMultiHopRoute } from './sdk/multiHop.js';
 export { depositLpToken } from './sdk/deposit.js';
 export { withdraw } from './sdk/withdraw.js';
-export { getPumpAmmProgram } from './sdk/util.js';
+export { PUMP_AMM_TOTAL_TOKEN_SUPPLY, getPumpAmmProgram, isPumpPool, poolMarketCap, supportsTradeV2 } from './sdk/util.js';
 export { currentDayTokens, totalUnclaimedTokens } from './sdk/tokenIncentives.js';
-export { B as BuyBaseInputResult, g as BuyQuoteInputResult, n as CollectCoinCreatorFeeSolanaState, C as CommonSolanaState, k as CreatePoolSolanaState, c as DepositBaseAndLpTokenFromQuoteResult, D as DepositBaseResult, e as DepositLpTokenResult, a as DepositQuoteAndLpTokenFromBaseResult, b as DepositQuoteResult, d as DepositResult, F as FeeConfig, o as FeeTier, p as Fees, G as GlobalConfig, i as GlobalVolumeAccumulator, L as LiquidityAccounts, m as LiquiditySolanaState, P as Pool, S as SellBaseInputResult, h as SellQuoteInputResult, j as SwapAccounts, l as SwapSolanaState, U as UserVolumeAccumulator, f as WithdrawAutocompleteResult, W as WithdrawResult } from './sdk-DrGrVjGc.js';
-export { P as PumpAmm } from './pump_amm-CDKyVwzr.js';
+export { B as BuyBaseInputResult, a as BuyQuoteInputResult, C as CollectCoinCreatorFeeSolanaState, b as CommonSolanaState, c as CreatePoolSolanaState, D as DepositBaseAndLpTokenFromQuoteResult, d as DepositBaseResult, e as DepositLpTokenResult, f as DepositQuoteAndLpTokenFromBaseResult, g as DepositQuoteResult, h as DepositResult, F as FeeConfig, i as FeeTier, j as Fees, G as GlobalConfig, k as GlobalVolumeAccumulator, L as LiquidityAccounts, l as LiquiditySolanaState, P as Pool, S as SellBaseInputResult, m as SellQuoteInputResult, n as SwapAccounts, o as SwapSolanaState, U as UserVolumeAccumulator, W as WithdrawAutocompleteResult, p as WithdrawResult } from './sdk-CtXcjwA6.js';
+export { P as PumpAmm } from './pump_amm-D1Mp6mIm.js';
 import '@solana/web3.js';
 import 'buffer';
 import 'bn.js';
@@ -25,27 +27,22 @@ var metadata = {
 };
 var instructions = [
 	{
-		name: "admin_set_coin_creator",
-		docs: [
-			"Overrides the coin creator for a canonical pump pool"
-		],
+		name: "admin_cto_pool",
 		discriminator: [
-			242,
-			40,
-			117,
-			145,
-			73,
-			96,
-			105,
-			104
+			45,
+			61,
+			165,
+			151,
+			104,
+			0,
+			49,
+			189
 		],
 		accounts: [
 			{
-				name: "admin_set_coin_creator_authority",
-				signer: true,
-				relations: [
-					"global_config"
-				]
+				name: "payer",
+				writable: true,
+				signer: true
 			},
 			{
 				name: "global_config"
@@ -53,6 +50,79 @@ var instructions = [
 			{
 				name: "pool",
 				writable: true
+			},
+			{
+				name: "pool_authority",
+				signer: true,
+				pda: {
+					seeds: [
+						{
+							kind: "const",
+							value: [
+								112,
+								111,
+								111,
+								108,
+								45,
+								97,
+								117,
+								116,
+								104,
+								111,
+								114,
+								105,
+								116,
+								121
+							]
+						},
+						{
+							kind: "account",
+							path: "pool.base_mint",
+							account: "Pool"
+						}
+					],
+					program: {
+						kind: "const",
+						value: [
+							1,
+							86,
+							224,
+							246,
+							147,
+							102,
+							90,
+							207,
+							68,
+							219,
+							21,
+							104,
+							191,
+							23,
+							91,
+							170,
+							81,
+							137,
+							203,
+							151,
+							245,
+							210,
+							255,
+							59,
+							101,
+							93,
+							43,
+							182,
+							253,
+							109,
+							24,
+							176
+						]
+					}
+				}
+			},
+			{
+				name: "system_program",
+				address: "11111111111111111111111111111111"
 			},
 			{
 				name: "event_authority",
@@ -91,6 +161,16 @@ var instructions = [
 			{
 				name: "coin_creator",
 				type: "pubkey"
+			},
+			{
+				name: "is_holder_reward",
+				type: "bool"
+			},
+			{
+				name: "creator_fee_bps",
+				type: {
+					option: "u64"
+				}
 			}
 		]
 	},
@@ -301,6 +381,213 @@ var instructions = [
 			},
 			{
 				name: "token_supply_per_day",
+				type: "u64"
+			}
+		]
+	},
+	{
+		name: "boost_buy_and_burn",
+		discriminator: [
+			105,
+			68,
+			6,
+			175,
+			0,
+			7,
+			35,
+			162
+		],
+		accounts: [
+			{
+				name: "pool"
+			},
+			{
+				name: "authority",
+				writable: true,
+				signer: true
+			},
+			{
+				name: "global_config",
+				pda: {
+					seeds: [
+						{
+							kind: "const",
+							value: [
+								103,
+								108,
+								111,
+								98,
+								97,
+								108,
+								95,
+								99,
+								111,
+								110,
+								102,
+								105,
+								103
+							]
+						}
+					]
+				}
+			},
+			{
+				name: "base_mint",
+				writable: true,
+				relations: [
+					"pool"
+				]
+			},
+			{
+				name: "quote_mint",
+				relations: [
+					"pool"
+				]
+			},
+			{
+				name: "pool_base_token_account",
+				writable: true,
+				relations: [
+					"pool"
+				]
+			},
+			{
+				name: "pool_quote_token_account",
+				writable: true,
+				relations: [
+					"pool"
+				]
+			},
+			{
+				name: "boost_vault_authority",
+				pda: {
+					seeds: [
+						{
+							kind: "const",
+							value: [
+								98,
+								111,
+								111,
+								115,
+								116,
+								95,
+								118,
+								97,
+								117,
+								108,
+								116
+							]
+						},
+						{
+							kind: "account",
+							path: "pool"
+						}
+					]
+				}
+			},
+			{
+				name: "boost_vault",
+				writable: true,
+				pda: {
+					seeds: [
+						{
+							kind: "account",
+							path: "boost_vault_authority"
+						},
+						{
+							kind: "account",
+							path: "quote_token_program"
+						},
+						{
+							kind: "account",
+							path: "quote_mint"
+						}
+					],
+					program: {
+						kind: "const",
+						value: [
+							140,
+							151,
+							37,
+							143,
+							78,
+							36,
+							137,
+							241,
+							187,
+							61,
+							16,
+							41,
+							20,
+							142,
+							13,
+							131,
+							11,
+							90,
+							19,
+							153,
+							218,
+							255,
+							16,
+							132,
+							4,
+							142,
+							123,
+							216,
+							219,
+							233,
+							248,
+							89
+						]
+					}
+				}
+			},
+			{
+				name: "base_token_program"
+			},
+			{
+				name: "quote_token_program"
+			},
+			{
+				name: "event_authority",
+				pda: {
+					seeds: [
+						{
+							kind: "const",
+							value: [
+								95,
+								95,
+								101,
+								118,
+								101,
+								110,
+								116,
+								95,
+								97,
+								117,
+								116,
+								104,
+								111,
+								114,
+								105,
+								116,
+								121
+							]
+						}
+					]
+				}
+			},
+			{
+				name: "program"
+			}
+		],
+		args: [
+			{
+				name: "quote_amount_in",
+				type: "u64"
+			},
+			{
+				name: "min_base_amount_burned",
 				type: "u64"
 			}
 		]
@@ -1158,7 +1445,519 @@ var instructions = [
 		]
 	},
 	{
+		name: "buy_exact_quote_in_v2",
+		discriminator: [
+			194,
+			171,
+			28,
+			70,
+			104,
+			77,
+			91,
+			47
+		],
+		accounts: [
+			{
+				name: "pool",
+				writable: true
+			},
+			{
+				name: "user",
+				writable: true,
+				signer: true
+			},
+			{
+				name: "global_config"
+			},
+			{
+				name: "base_mint",
+				relations: [
+					"pool"
+				]
+			},
+			{
+				name: "quote_mint",
+				relations: [
+					"pool"
+				]
+			},
+			{
+				name: "user_base_token_account",
+				writable: true
+			},
+			{
+				name: "user_quote_token_account",
+				writable: true
+			},
+			{
+				name: "pool_base_token_account",
+				writable: true,
+				relations: [
+					"pool"
+				]
+			},
+			{
+				name: "pool_quote_token_account",
+				writable: true,
+				relations: [
+					"pool"
+				]
+			},
+			{
+				name: "base_token_program"
+			},
+			{
+				name: "quote_token_program"
+			},
+			{
+				name: "system_program",
+				address: "11111111111111111111111111111111"
+			},
+			{
+				name: "user_volume_accumulator",
+				writable: true,
+				pda: {
+					seeds: [
+						{
+							kind: "const",
+							value: [
+								117,
+								115,
+								101,
+								114,
+								95,
+								118,
+								111,
+								108,
+								117,
+								109,
+								101,
+								95,
+								97,
+								99,
+								99,
+								117,
+								109,
+								117,
+								108,
+								97,
+								116,
+								111,
+								114
+							]
+						},
+						{
+							kind: "account",
+							path: "user"
+						}
+					]
+				}
+			},
+			{
+				name: "fee_config",
+				pda: {
+					seeds: [
+						{
+							kind: "const",
+							value: [
+								102,
+								101,
+								101,
+								95,
+								99,
+								111,
+								110,
+								102,
+								105,
+								103
+							]
+						},
+						{
+							kind: "const",
+							value: [
+								12,
+								20,
+								222,
+								252,
+								130,
+								94,
+								198,
+								118,
+								148,
+								37,
+								8,
+								24,
+								187,
+								101,
+								64,
+								101,
+								244,
+								41,
+								141,
+								49,
+								86,
+								213,
+								113,
+								180,
+								212,
+								248,
+								9,
+								12,
+								24,
+								233,
+								168,
+								99
+							]
+						}
+					],
+					program: {
+						kind: "const",
+						value: [
+							12,
+							53,
+							255,
+							169,
+							5,
+							90,
+							142,
+							86,
+							141,
+							168,
+							247,
+							188,
+							7,
+							86,
+							21,
+							39,
+							76,
+							241,
+							201,
+							44,
+							164,
+							31,
+							64,
+							0,
+							156,
+							81,
+							106,
+							164,
+							20,
+							194,
+							124,
+							112
+						]
+					}
+				}
+			},
+			{
+				name: "buyback_fee_recipient",
+				writable: true
+			},
+			{
+				name: "event_authority",
+				pda: {
+					seeds: [
+						{
+							kind: "const",
+							value: [
+								95,
+								95,
+								101,
+								118,
+								101,
+								110,
+								116,
+								95,
+								97,
+								117,
+								116,
+								104,
+								111,
+								114,
+								105,
+								116,
+								121
+							]
+						}
+					]
+				}
+			},
+			{
+				name: "program",
+				address: "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA"
+			}
+		],
+		args: [
+			{
+				name: "spendable_quote_in",
+				type: "u64"
+			},
+			{
+				name: "min_base_amount_out",
+				type: "u64"
+			}
+		]
+	},
+	{
+		name: "buy_v2",
+		discriminator: [
+			184,
+			23,
+			238,
+			97,
+			103,
+			197,
+			211,
+			61
+		],
+		accounts: [
+			{
+				name: "pool",
+				writable: true
+			},
+			{
+				name: "user",
+				writable: true,
+				signer: true
+			},
+			{
+				name: "global_config"
+			},
+			{
+				name: "base_mint",
+				relations: [
+					"pool"
+				]
+			},
+			{
+				name: "quote_mint",
+				relations: [
+					"pool"
+				]
+			},
+			{
+				name: "user_base_token_account",
+				writable: true
+			},
+			{
+				name: "user_quote_token_account",
+				writable: true
+			},
+			{
+				name: "pool_base_token_account",
+				writable: true,
+				relations: [
+					"pool"
+				]
+			},
+			{
+				name: "pool_quote_token_account",
+				writable: true,
+				relations: [
+					"pool"
+				]
+			},
+			{
+				name: "base_token_program"
+			},
+			{
+				name: "quote_token_program"
+			},
+			{
+				name: "system_program",
+				address: "11111111111111111111111111111111"
+			},
+			{
+				name: "user_volume_accumulator",
+				writable: true,
+				pda: {
+					seeds: [
+						{
+							kind: "const",
+							value: [
+								117,
+								115,
+								101,
+								114,
+								95,
+								118,
+								111,
+								108,
+								117,
+								109,
+								101,
+								95,
+								97,
+								99,
+								99,
+								117,
+								109,
+								117,
+								108,
+								97,
+								116,
+								111,
+								114
+							]
+						},
+						{
+							kind: "account",
+							path: "user"
+						}
+					]
+				}
+			},
+			{
+				name: "fee_config",
+				pda: {
+					seeds: [
+						{
+							kind: "const",
+							value: [
+								102,
+								101,
+								101,
+								95,
+								99,
+								111,
+								110,
+								102,
+								105,
+								103
+							]
+						},
+						{
+							kind: "const",
+							value: [
+								12,
+								20,
+								222,
+								252,
+								130,
+								94,
+								198,
+								118,
+								148,
+								37,
+								8,
+								24,
+								187,
+								101,
+								64,
+								101,
+								244,
+								41,
+								141,
+								49,
+								86,
+								213,
+								113,
+								180,
+								212,
+								248,
+								9,
+								12,
+								24,
+								233,
+								168,
+								99
+							]
+						}
+					],
+					program: {
+						kind: "const",
+						value: [
+							12,
+							53,
+							255,
+							169,
+							5,
+							90,
+							142,
+							86,
+							141,
+							168,
+							247,
+							188,
+							7,
+							86,
+							21,
+							39,
+							76,
+							241,
+							201,
+							44,
+							164,
+							31,
+							64,
+							0,
+							156,
+							81,
+							106,
+							164,
+							20,
+							194,
+							124,
+							112
+						]
+					}
+				}
+			},
+			{
+				name: "buyback_fee_recipient",
+				writable: true
+			},
+			{
+				name: "event_authority",
+				pda: {
+					seeds: [
+						{
+							kind: "const",
+							value: [
+								95,
+								95,
+								101,
+								118,
+								101,
+								110,
+								116,
+								95,
+								97,
+								117,
+								116,
+								104,
+								111,
+								114,
+								105,
+								116,
+								121
+							]
+						}
+					]
+				}
+			},
+			{
+				name: "program",
+				address: "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA"
+			}
+		],
+		args: [
+			{
+				name: "base_amount_out",
+				type: "u64"
+			},
+			{
+				name: "max_quote_amount_in",
+				type: "u64"
+			}
+		]
+	},
+	{
 		name: "claim_cashback",
+		docs: [
+			"Pays out the user's accrued cashback. `user_wsol_token_account` may be any token account",
+			"of `quote_mint` owned by `user`, not only the associated one."
+		],
 		discriminator: [
 			37,
 			58,
@@ -1279,60 +2078,7 @@ var instructions = [
 			},
 			{
 				name: "user_wsol_token_account",
-				writable: true,
-				pda: {
-					seeds: [
-						{
-							kind: "account",
-							path: "user"
-						},
-						{
-							kind: "account",
-							path: "quote_token_program"
-						},
-						{
-							kind: "account",
-							path: "quote_mint"
-						}
-					],
-					program: {
-						kind: "const",
-						value: [
-							140,
-							151,
-							37,
-							143,
-							78,
-							36,
-							137,
-							241,
-							187,
-							61,
-							16,
-							41,
-							20,
-							142,
-							13,
-							131,
-							11,
-							90,
-							19,
-							153,
-							218,
-							255,
-							16,
-							132,
-							4,
-							142,
-							123,
-							216,
-							219,
-							233,
-							248,
-							89
-						]
-					}
-				}
+				writable: true
 			},
 			{
 				name: "system_program",
@@ -2340,6 +3086,30 @@ var instructions = [
 						name: "OptionBool"
 					}
 				}
+			},
+			{
+				name: "creator_fee_bps",
+				type: {
+					defined: {
+						name: "OptionU64"
+					}
+				}
+			},
+			{
+				name: "can_edit_creator_fee",
+				type: {
+					defined: {
+						name: "OptionBool"
+					}
+				}
+			},
+			{
+				name: "is_holder_reward",
+				type: {
+					defined: {
+						name: "OptionBool"
+					}
+				}
 			}
 		]
 	},
@@ -2567,11 +3337,215 @@ var instructions = [
 			},
 			{
 				name: "user",
+				writable: true,
 				signer: true
 			},
 			{
 				name: "system_program",
 				address: "11111111111111111111111111111111"
+			},
+			{
+				name: "event_authority",
+				pda: {
+					seeds: [
+						{
+							kind: "const",
+							value: [
+								95,
+								95,
+								101,
+								118,
+								101,
+								110,
+								116,
+								95,
+								97,
+								117,
+								116,
+								104,
+								111,
+								114,
+								105,
+								116,
+								121
+							]
+						}
+					]
+				}
+			},
+			{
+				name: "program"
+			}
+		],
+		args: [
+		]
+	},
+	{
+		name: "init_boost",
+		discriminator: [
+			140,
+			233,
+			33,
+			94,
+			132,
+			90,
+			194,
+			143
+		],
+		accounts: [
+			{
+				name: "pool",
+				writable: true
+			},
+			{
+				name: "global_config",
+				pda: {
+					seeds: [
+						{
+							kind: "const",
+							value: [
+								103,
+								108,
+								111,
+								98,
+								97,
+								108,
+								95,
+								99,
+								111,
+								110,
+								102,
+								105,
+								103
+							]
+						}
+					]
+				}
+			},
+			{
+				name: "creator",
+				writable: true,
+				signer: true
+			},
+			{
+				name: "base_mint",
+				relations: [
+					"pool"
+				]
+			},
+			{
+				name: "quote_mint",
+				relations: [
+					"pool"
+				]
+			},
+			{
+				name: "pool_base_token_account",
+				relations: [
+					"pool"
+				]
+			},
+			{
+				name: "pool_quote_token_account",
+				writable: true,
+				relations: [
+					"pool"
+				]
+			},
+			{
+				name: "boost_vault_authority",
+				pda: {
+					seeds: [
+						{
+							kind: "const",
+							value: [
+								98,
+								111,
+								111,
+								115,
+								116,
+								95,
+								118,
+								97,
+								117,
+								108,
+								116
+							]
+						},
+						{
+							kind: "account",
+							path: "pool"
+						}
+					]
+				}
+			},
+			{
+				name: "boost_vault",
+				writable: true,
+				pda: {
+					seeds: [
+						{
+							kind: "account",
+							path: "boost_vault_authority"
+						},
+						{
+							kind: "account",
+							path: "quote_token_program"
+						},
+						{
+							kind: "account",
+							path: "quote_mint"
+						}
+					],
+					program: {
+						kind: "const",
+						value: [
+							140,
+							151,
+							37,
+							143,
+							78,
+							36,
+							137,
+							241,
+							187,
+							61,
+							16,
+							41,
+							20,
+							142,
+							13,
+							131,
+							11,
+							90,
+							19,
+							153,
+							218,
+							255,
+							16,
+							132,
+							4,
+							142,
+							123,
+							216,
+							219,
+							233,
+							248,
+							89
+						]
+					}
+				}
+			},
+			{
+				name: "quote_token_program"
+			},
+			{
+				name: "system_program",
+				address: "11111111111111111111111111111111"
+			},
+			{
+				name: "associated_token_program",
+				address: "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
 			},
 			{
 				name: "event_authority",
@@ -2865,6 +3839,267 @@ var instructions = [
 			}
 		],
 		args: [
+		]
+	},
+	{
+		name: "multi_hop_swap",
+		discriminator: [
+			43,
+			100,
+			73,
+			19,
+			233,
+			246,
+			111,
+			148
+		],
+		accounts: [
+			{
+				name: "user",
+				writable: true,
+				signer: true
+			},
+			{
+				name: "user_in_token_account",
+				writable: true
+			},
+			{
+				name: "user_out_token_account",
+				writable: true
+			},
+			{
+				name: "global_config",
+				pda: {
+					seeds: [
+						{
+							kind: "const",
+							value: [
+								103,
+								108,
+								111,
+								98,
+								97,
+								108,
+								95,
+								99,
+								111,
+								110,
+								102,
+								105,
+								103
+							]
+						}
+					]
+				}
+			},
+			{
+				name: "fee_config",
+				pda: {
+					seeds: [
+						{
+							kind: "const",
+							value: [
+								102,
+								101,
+								101,
+								95,
+								99,
+								111,
+								110,
+								102,
+								105,
+								103
+							]
+						},
+						{
+							kind: "const",
+							value: [
+								12,
+								20,
+								222,
+								252,
+								130,
+								94,
+								198,
+								118,
+								148,
+								37,
+								8,
+								24,
+								187,
+								101,
+								64,
+								101,
+								244,
+								41,
+								141,
+								49,
+								86,
+								213,
+								113,
+								180,
+								212,
+								248,
+								9,
+								12,
+								24,
+								233,
+								168,
+								99
+							]
+						}
+					],
+					program: {
+						kind: "const",
+						value: [
+							12,
+							53,
+							255,
+							169,
+							5,
+							90,
+							142,
+							86,
+							141,
+							168,
+							247,
+							188,
+							7,
+							86,
+							21,
+							39,
+							76,
+							241,
+							201,
+							44,
+							164,
+							31,
+							64,
+							0,
+							156,
+							81,
+							106,
+							164,
+							20,
+							194,
+							124,
+							112
+						]
+					}
+				}
+			},
+			{
+				name: "user_volume_accumulator",
+				writable: true,
+				pda: {
+					seeds: [
+						{
+							kind: "const",
+							value: [
+								117,
+								115,
+								101,
+								114,
+								95,
+								118,
+								111,
+								108,
+								117,
+								109,
+								101,
+								95,
+								97,
+								99,
+								99,
+								117,
+								109,
+								117,
+								108,
+								97,
+								116,
+								111,
+								114
+							]
+						},
+						{
+							kind: "account",
+							path: "user"
+						}
+					]
+				}
+			},
+			{
+				name: "buyback_fee_recipient",
+				writable: true
+			},
+			{
+				name: "token_program",
+				address: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+			},
+			{
+				name: "token_2022_program",
+				address: "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+			},
+			{
+				name: "system_program",
+				address: "11111111111111111111111111111111"
+			},
+			{
+				name: "event_authority",
+				pda: {
+					seeds: [
+						{
+							kind: "const",
+							value: [
+								95,
+								95,
+								101,
+								118,
+								101,
+								110,
+								116,
+								95,
+								97,
+								117,
+								116,
+								104,
+								111,
+								114,
+								105,
+								116,
+								121
+							]
+						}
+					]
+				}
+			},
+			{
+				name: "program",
+				address: "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA"
+			},
+			{
+				name: "pump_program",
+				address: "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+			},
+			{
+				name: "pump_global"
+			},
+			{
+				name: "pump_fee_config"
+			},
+			{
+				name: "pump_event_authority"
+			}
+		],
+		args: [
+			{
+				name: "amount_in",
+				type: "u64"
+			},
+			{
+				name: "min_amount_out",
+				type: "u64"
+			}
 		]
 	},
 	{
@@ -3200,6 +4435,327 @@ var instructions = [
 		]
 	},
 	{
+		name: "sell_v2",
+		discriminator: [
+			93,
+			246,
+			130,
+			60,
+			231,
+			233,
+			64,
+			178
+		],
+		accounts: [
+			{
+				name: "pool",
+				writable: true
+			},
+			{
+				name: "user",
+				writable: true,
+				signer: true
+			},
+			{
+				name: "global_config"
+			},
+			{
+				name: "base_mint",
+				relations: [
+					"pool"
+				]
+			},
+			{
+				name: "quote_mint",
+				relations: [
+					"pool"
+				]
+			},
+			{
+				name: "user_base_token_account",
+				writable: true
+			},
+			{
+				name: "user_quote_token_account",
+				writable: true
+			},
+			{
+				name: "pool_base_token_account",
+				writable: true,
+				relations: [
+					"pool"
+				]
+			},
+			{
+				name: "pool_quote_token_account",
+				writable: true,
+				relations: [
+					"pool"
+				]
+			},
+			{
+				name: "base_token_program"
+			},
+			{
+				name: "quote_token_program"
+			},
+			{
+				name: "system_program",
+				address: "11111111111111111111111111111111"
+			},
+			{
+				name: "user_volume_accumulator",
+				writable: true,
+				pda: {
+					seeds: [
+						{
+							kind: "const",
+							value: [
+								117,
+								115,
+								101,
+								114,
+								95,
+								118,
+								111,
+								108,
+								117,
+								109,
+								101,
+								95,
+								97,
+								99,
+								99,
+								117,
+								109,
+								117,
+								108,
+								97,
+								116,
+								111,
+								114
+							]
+						},
+						{
+							kind: "account",
+							path: "user"
+						}
+					]
+				}
+			},
+			{
+				name: "fee_config",
+				pda: {
+					seeds: [
+						{
+							kind: "const",
+							value: [
+								102,
+								101,
+								101,
+								95,
+								99,
+								111,
+								110,
+								102,
+								105,
+								103
+							]
+						},
+						{
+							kind: "const",
+							value: [
+								12,
+								20,
+								222,
+								252,
+								130,
+								94,
+								198,
+								118,
+								148,
+								37,
+								8,
+								24,
+								187,
+								101,
+								64,
+								101,
+								244,
+								41,
+								141,
+								49,
+								86,
+								213,
+								113,
+								180,
+								212,
+								248,
+								9,
+								12,
+								24,
+								233,
+								168,
+								99
+							]
+						}
+					],
+					program: {
+						kind: "const",
+						value: [
+							12,
+							53,
+							255,
+							169,
+							5,
+							90,
+							142,
+							86,
+							141,
+							168,
+							247,
+							188,
+							7,
+							86,
+							21,
+							39,
+							76,
+							241,
+							201,
+							44,
+							164,
+							31,
+							64,
+							0,
+							156,
+							81,
+							106,
+							164,
+							20,
+							194,
+							124,
+							112
+						]
+					}
+				}
+			},
+			{
+				name: "buyback_fee_recipient",
+				writable: true
+			},
+			{
+				name: "event_authority",
+				pda: {
+					seeds: [
+						{
+							kind: "const",
+							value: [
+								95,
+								95,
+								101,
+								118,
+								101,
+								110,
+								116,
+								95,
+								97,
+								117,
+								116,
+								104,
+								111,
+								114,
+								105,
+								116,
+								121
+							]
+						}
+					]
+				}
+			},
+			{
+				name: "program",
+				address: "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA"
+			}
+		],
+		args: [
+			{
+				name: "base_amount_in",
+				type: "u64"
+			},
+			{
+				name: "min_quote_amount_out",
+				type: "u64"
+			}
+		]
+	},
+	{
+		name: "set_boost_authority",
+		discriminator: [
+			227,
+			149,
+			76,
+			42,
+			130,
+			39,
+			234,
+			205
+		],
+		accounts: [
+			{
+				name: "admin",
+				signer: true,
+				relations: [
+					"global_config"
+				]
+			},
+			{
+				name: "global_config",
+				writable: true
+			},
+			{
+				name: "boost_authority"
+			},
+			{
+				name: "system_program",
+				address: "11111111111111111111111111111111"
+			},
+			{
+				name: "event_authority",
+				pda: {
+					seeds: [
+						{
+							kind: "const",
+							value: [
+								95,
+								95,
+								101,
+								118,
+								101,
+								110,
+								116,
+								95,
+								97,
+								117,
+								116,
+								104,
+								111,
+								114,
+								105,
+								116,
+								121
+							]
+						}
+					]
+				}
+			},
+			{
+				name: "program"
+			}
+		],
+		args: [
+		]
+	},
+	{
 		name: "set_coin_creator",
 		docs: [
 			"Sets Pool::coin_creator from Metaplex metadata creator or BondingCurve::creator"
@@ -3508,6 +5064,310 @@ var instructions = [
 		]
 	},
 	{
+		name: "sweep_creator_fee",
+		discriminator: [
+			32,
+			246,
+			191,
+			52,
+			8,
+			201,
+			73,
+			186
+		],
+		accounts: [
+			{
+				name: "payer",
+				writable: true,
+				signer: true
+			},
+			{
+				name: "global_config"
+			},
+			{
+				name: "pool",
+				writable: true
+			},
+			{
+				name: "quote_mint",
+				relations: [
+					"pool"
+				]
+			},
+			{
+				name: "quote_token_program"
+			},
+			{
+				name: "pool_quote_token_account",
+				writable: true,
+				relations: [
+					"pool"
+				]
+			},
+			{
+				name: "recipient",
+				docs: [
+					"protocol fee recipient (`check_protocol_fee_recipient`) or the coin-creator vault",
+					"authority PDA of `pool.coin_creator`."
+				]
+			},
+			{
+				name: "recipient_token_account",
+				docs: [
+					"idempotently when missing (the payer pays)."
+				],
+				writable: true,
+				pda: {
+					seeds: [
+						{
+							kind: "account",
+							path: "recipient"
+						},
+						{
+							kind: "account",
+							path: "quote_token_program"
+						},
+						{
+							kind: "account",
+							path: "quote_mint"
+						}
+					],
+					program: {
+						kind: "const",
+						value: [
+							140,
+							151,
+							37,
+							143,
+							78,
+							36,
+							137,
+							241,
+							187,
+							61,
+							16,
+							41,
+							20,
+							142,
+							13,
+							131,
+							11,
+							90,
+							19,
+							153,
+							218,
+							255,
+							16,
+							132,
+							4,
+							142,
+							123,
+							216,
+							219,
+							233,
+							248,
+							89
+						]
+					}
+				}
+			},
+			{
+				name: "system_program",
+				address: "11111111111111111111111111111111"
+			},
+			{
+				name: "associated_token_program",
+				address: "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+			},
+			{
+				name: "event_authority",
+				pda: {
+					seeds: [
+						{
+							kind: "const",
+							value: [
+								95,
+								95,
+								101,
+								118,
+								101,
+								110,
+								116,
+								95,
+								97,
+								117,
+								116,
+								104,
+								111,
+								114,
+								105,
+								116,
+								121
+							]
+						}
+					]
+				}
+			},
+			{
+				name: "program"
+			}
+		],
+		args: [
+		]
+	},
+	{
+		name: "sweep_protocol_fee",
+		discriminator: [
+			8,
+			48,
+			190,
+			7,
+			182,
+			68,
+			183,
+			229
+		],
+		accounts: [
+			{
+				name: "payer",
+				writable: true,
+				signer: true
+			},
+			{
+				name: "global_config"
+			},
+			{
+				name: "pool",
+				writable: true
+			},
+			{
+				name: "quote_mint",
+				relations: [
+					"pool"
+				]
+			},
+			{
+				name: "quote_token_program"
+			},
+			{
+				name: "pool_quote_token_account",
+				writable: true,
+				relations: [
+					"pool"
+				]
+			},
+			{
+				name: "recipient",
+				docs: [
+					"protocol fee recipient (`check_protocol_fee_recipient`) or the coin-creator vault",
+					"authority PDA of `pool.coin_creator`."
+				]
+			},
+			{
+				name: "recipient_token_account",
+				docs: [
+					"idempotently when missing (the payer pays)."
+				],
+				writable: true,
+				pda: {
+					seeds: [
+						{
+							kind: "account",
+							path: "recipient"
+						},
+						{
+							kind: "account",
+							path: "quote_token_program"
+						},
+						{
+							kind: "account",
+							path: "quote_mint"
+						}
+					],
+					program: {
+						kind: "const",
+						value: [
+							140,
+							151,
+							37,
+							143,
+							78,
+							36,
+							137,
+							241,
+							187,
+							61,
+							16,
+							41,
+							20,
+							142,
+							13,
+							131,
+							11,
+							90,
+							19,
+							153,
+							218,
+							255,
+							16,
+							132,
+							4,
+							142,
+							123,
+							216,
+							219,
+							233,
+							248,
+							89
+						]
+					}
+				}
+			},
+			{
+				name: "system_program",
+				address: "11111111111111111111111111111111"
+			},
+			{
+				name: "associated_token_program",
+				address: "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+			},
+			{
+				name: "event_authority",
+				pda: {
+					seeds: [
+						{
+							kind: "const",
+							value: [
+								95,
+								95,
+								101,
+								118,
+								101,
+								110,
+								116,
+								95,
+								97,
+								117,
+								116,
+								104,
+								111,
+								114,
+								105,
+								116,
+								121
+							]
+						}
+					]
+				}
+			},
+			{
+				name: "program"
+			}
+		],
+		args: [
+		]
+	},
+	{
 		name: "sync_user_volume_accumulator",
 		discriminator: [
 			86,
@@ -3634,6 +5494,38 @@ var instructions = [
 			}
 		],
 		args: [
+		]
+	},
+	{
+		name: "toggle_boost",
+		discriminator: [
+			117,
+			161,
+			160,
+			74,
+			223,
+			137,
+			118,
+			99
+		],
+		accounts: [
+			{
+				name: "admin",
+				signer: true,
+				relations: [
+					"global_config"
+				]
+			},
+			{
+				name: "global_config",
+				writable: true
+			}
+		],
+		args: [
+			{
+				name: "enabled",
+				type: "bool"
+			}
 		]
 	},
 	{
@@ -3993,6 +5885,255 @@ var instructions = [
 		]
 	},
 	{
+		name: "transfer_creator_fees_to_pump_v2",
+		discriminator: [
+			1,
+			33,
+			78,
+			185,
+			33,
+			67,
+			44,
+			92
+		],
+		accounts: [
+			{
+				name: "payer",
+				writable: true,
+				signer: true
+			},
+			{
+				name: "quote_mint"
+			},
+			{
+				name: "token_program"
+			},
+			{
+				name: "system_program",
+				address: "11111111111111111111111111111111"
+			},
+			{
+				name: "associated_token_program",
+				address: "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+			},
+			{
+				name: "coin_creator"
+			},
+			{
+				name: "coin_creator_vault_authority",
+				writable: true,
+				pda: {
+					seeds: [
+						{
+							kind: "const",
+							value: [
+								99,
+								114,
+								101,
+								97,
+								116,
+								111,
+								114,
+								95,
+								118,
+								97,
+								117,
+								108,
+								116
+							]
+						},
+						{
+							kind: "account",
+							path: "coin_creator"
+						}
+					]
+				}
+			},
+			{
+				name: "coin_creator_vault_ata",
+				writable: true,
+				pda: {
+					seeds: [
+						{
+							kind: "account",
+							path: "coin_creator_vault_authority"
+						},
+						{
+							kind: "account",
+							path: "token_program"
+						},
+						{
+							kind: "account",
+							path: "quote_mint"
+						}
+					],
+					program: {
+						kind: "const",
+						value: [
+							140,
+							151,
+							37,
+							143,
+							78,
+							36,
+							137,
+							241,
+							187,
+							61,
+							16,
+							41,
+							20,
+							142,
+							13,
+							131,
+							11,
+							90,
+							19,
+							153,
+							218,
+							255,
+							16,
+							132,
+							4,
+							142,
+							123,
+							216,
+							219,
+							233,
+							248,
+							89
+						]
+					}
+				}
+			},
+			{
+				name: "pump_creator_vault",
+				writable: true,
+				pda: {
+					seeds: [
+						{
+							kind: "const",
+							value: [
+								99,
+								114,
+								101,
+								97,
+								116,
+								111,
+								114,
+								45,
+								118,
+								97,
+								117,
+								108,
+								116
+							]
+						},
+						{
+							kind: "account",
+							path: "coin_creator"
+						}
+					],
+					program: {
+						kind: "const",
+						value: [
+							1,
+							86,
+							224,
+							246,
+							147,
+							102,
+							90,
+							207,
+							68,
+							219,
+							21,
+							104,
+							191,
+							23,
+							91,
+							170,
+							81,
+							137,
+							203,
+							151,
+							245,
+							210,
+							255,
+							59,
+							101,
+							93,
+							43,
+							182,
+							253,
+							109,
+							24,
+							176
+						]
+					}
+				}
+			},
+			{
+				name: "pump_creator_vault_ata",
+				writable: true,
+				pda: {
+					seeds: [
+						{
+							kind: "account",
+							path: "pump_creator_vault"
+						},
+						{
+							kind: "account",
+							path: "token_program"
+						},
+						{
+							kind: "account",
+							path: "quote_mint"
+						}
+					],
+					program: {
+						kind: "account",
+						path: "associated_token_program"
+					}
+				}
+			},
+			{
+				name: "event_authority",
+				pda: {
+					seeds: [
+						{
+							kind: "const",
+							value: [
+								95,
+								95,
+								101,
+								118,
+								101,
+								110,
+								116,
+								95,
+								97,
+								117,
+								116,
+								104,
+								111,
+								114,
+								105,
+								116,
+								121
+							]
+						}
+					]
+				}
+			},
+			{
+				name: "program"
+			}
+		],
+		args: [
+		]
+	},
+	{
 		name: "update_admin",
 		discriminator: [
 			161,
@@ -4053,6 +6194,145 @@ var instructions = [
 			}
 		],
 		args: [
+		]
+	},
+	{
+		name: "update_buyback_config",
+		discriminator: [
+			251,
+			224,
+			171,
+			146,
+			160,
+			26,
+			113,
+			233
+		],
+		accounts: [
+			{
+				name: "admin",
+				signer: true,
+				relations: [
+					"global_config"
+				]
+			},
+			{
+				name: "global_config",
+				writable: true
+			},
+			{
+				name: "event_authority",
+				pda: {
+					seeds: [
+						{
+							kind: "const",
+							value: [
+								95,
+								95,
+								101,
+								118,
+								101,
+								110,
+								116,
+								95,
+								97,
+								117,
+								116,
+								104,
+								111,
+								114,
+								105,
+								116,
+								121
+							]
+						}
+					]
+				}
+			},
+			{
+				name: "program"
+			}
+		],
+		args: [
+			{
+				name: "buyback_basis_points",
+				type: {
+					option: "u64"
+				}
+			}
+		]
+	},
+	{
+		name: "update_creator_fee_config",
+		discriminator: [
+			61,
+			175,
+			160,
+			249,
+			66,
+			66,
+			136,
+			175
+		],
+		accounts: [
+			{
+				name: "admin",
+				writable: true,
+				signer: true,
+				relations: [
+					"global_config"
+				]
+			},
+			{
+				name: "global_config",
+				writable: true
+			},
+			{
+				name: "system_program",
+				address: "11111111111111111111111111111111"
+			},
+			{
+				name: "event_authority",
+				pda: {
+					seeds: [
+						{
+							kind: "const",
+							value: [
+								95,
+								95,
+								101,
+								118,
+								101,
+								110,
+								116,
+								95,
+								97,
+								117,
+								116,
+								104,
+								111,
+								114,
+								105,
+								116,
+								121
+							]
+						}
+					]
+				}
+			},
+			{
+				name: "program"
+			}
+		],
+		args: [
+			{
+				name: "creator_fee_configurable",
+				type: "bool"
+			},
+			{
+				name: "max_configurable_creator_fee_bps",
+				type: "u64"
+			}
 		]
 	},
 	{
@@ -4361,16 +6641,16 @@ var accounts = [
 ];
 var events = [
 	{
-		name: "AdminSetCoinCreatorEvent",
+		name: "AdminCtoPoolEvent",
 		discriminator: [
-			45,
-			220,
-			93,
-			24,
-			25,
-			97,
-			172,
-			104
+			47,
+			35,
+			163,
+			249,
+			150,
+			157,
+			147,
+			122
 		]
 	},
 	{
@@ -4384,6 +6664,19 @@ var events = [
 			29,
 			67,
 			222
+		]
+	},
+	{
+		name: "BoostBuyAndBurnEvent",
+		discriminator: [
+			63,
+			69,
+			28,
+			22,
+			48,
+			92,
+			194,
+			185
 		]
 	},
 	{
@@ -4517,6 +6810,19 @@ var events = [
 		]
 	},
 	{
+		name: "InitBoostEvent",
+		discriminator: [
+			174,
+			124,
+			74,
+			249,
+			4,
+			81,
+			246,
+			17
+		]
+	},
+	{
 		name: "InitUserVolumeAccumulatorEvent",
 		discriminator: [
 			134,
@@ -4582,6 +6888,19 @@ var events = [
 		]
 	},
 	{
+		name: "SetBoostAuthorityEvent",
+		discriminator: [
+			89,
+			128,
+			240,
+			141,
+			91,
+			202,
+			71,
+			105
+		]
+	},
+	{
 		name: "SetMetaplexCoinCreatorEvent",
 		discriminator: [
 			150,
@@ -4592,6 +6911,19 @@ var events = [
 			207,
 			102,
 			228
+		]
+	},
+	{
+		name: "SweepPoolFeeEvent",
+		discriminator: [
+			130,
+			164,
+			36,
+			97,
+			228,
+			130,
+			135,
+			165
 		]
 	},
 	{
@@ -4618,6 +6950,19 @@ var events = [
 			63,
 			66,
 			234
+		]
+	},
+	{
+		name: "UpdateCreatorFeeConfigEvent",
+		discriminator: [
+			152,
+			198,
+			124,
+			124,
+			106,
+			246,
+			127,
+			191
 		]
 	},
 	{
@@ -4841,7 +7186,7 @@ var errors = [
 	{
 		code: 6047,
 		name: "CoinCreatorMigratedToSharingConfig",
-		msg: "coin creator has been migrated to sharing config, use pump_fees::reset_fee_sharing_config instead"
+		msg: "coin creator has been migrated to sharing config"
 	},
 	{
 		code: 6048,
@@ -4864,21 +7209,189 @@ var errors = [
 	{
 		code: 6052,
 		name: "TokensInVaultLessThanCashbackEarned"
+	},
+	{
+		code: 6053,
+		name: "BuybackFeeRecipientNotAuthorized",
+		msg: "Buyback fee recipient not authorized"
+	},
+	{
+		code: 6054,
+		name: "AllBuybackFeeRecipientsShouldBeNonZero"
+	},
+	{
+		code: 6055,
+		name: "NotUniqueBuybackFeeRecipients"
+	},
+	{
+		code: 6056,
+		name: "BuybackBasisPointsOutOfRange",
+		msg: "buyback_basis_points must be <= 10_000"
+	},
+	{
+		code: 6057,
+		name: "WrongBuybackFeeRecipientsCount",
+		msg: "buyback fee recipients require exactly 8 remaining accounts (or none)"
+	},
+	{
+		code: 6058,
+		name: "BuybackFeeRecipientMissing"
+	},
+	{
+		code: 6059,
+		name: "MissingCashbackAccounts",
+		msg: "Cashback trade is missing the required remaining accounts"
+	},
+	{
+		code: 6060,
+		name: "InvalidCashbackAccumulator",
+		msg: "Cashback user_volume_accumulator account is invalid"
+	},
+	{
+		code: 6061,
+		name: "InvalidCashbackAccumulatorAta",
+		msg: "Cashback user_volume_accumulator ATA is missing or invalid"
+	},
+	{
+		code: 6062,
+		name: "InvalidPoolV2",
+		msg: "pool_v2 remaining account is missing or invalid"
+	},
+	{
+		code: 6063,
+		name: "InsufficientRealQuoteReserves",
+		msg: "BOOST: sell output exceeds the real quote vault. effective = real + virtual is pricing-only; payout is capped at real_vault, so quote min(out, real_vault)"
+	},
+	{
+		code: 6064,
+		name: "BoostPoolLiquidityUnsupported",
+		msg: "BOOST: deposit/withdraw don't apply to boost pools"
+	},
+	{
+		code: 6065,
+		name: "PoolCannotBoost",
+		msg: "BOOST: pool cannot be boosted (no virtual reserves)"
+	},
+	{
+		code: 6066,
+		name: "BoostDisabled",
+		msg: "BOOST: boost is disabled"
+	},
+	{
+		code: 6067,
+		name: "SeedLockViolation",
+		msg: "BOOST: lp_supply must never drop below the circulating LP mint supply"
+	},
+	{
+		code: 6068,
+		name: "CreatorFeeNotConfigurable",
+		msg: "Configurable creator fee is disabled"
+	},
+	{
+		code: 6069,
+		name: "CreatorFeeBpsOutOfRange",
+		msg: "Creator fee basis points must be between 1 and the configured maximum"
+	},
+	{
+		code: 6070,
+		name: "CreatorFeeNotEditable",
+		msg: "Creator fee is not editable for this pool"
+	},
+	{
+		code: 6071,
+		name: "CreatorFeeNotAllowedForCashbackCoin",
+		msg: "Cashback coins cannot have a creator fee"
+	},
+	{
+		code: 6072,
+		name: "SharingConfigNotActive",
+		msg: "Sharing config is not active"
+	},
+	{
+		code: 6073,
+		name: "NotAuthorized",
+		msg: "Not authorized"
+	},
+	{
+		code: 6074,
+		name: "HolderRewardCreatorImmutable",
+		msg: "The coin creator of a holder-reward pool cannot be changed"
+	},
+	{
+		code: 6075,
+		name: "CtoNotAllowedForMayhemPool",
+		msg: "CTO is not allowed on a mayhem-mode pool"
+	},
+	{
+		code: 6076,
+		name: "InvalidHolderRewardCoinCreator",
+		msg: "A holder-reward pool's coin creator must be the holder-rewards PDA"
+	},
+	{
+		code: 6077,
+		name: "CreatorFeeNotConfigurableForQuote",
+		msg: "Creator fee is not configurable on a SOL or USDC quote; the fee schedule applies"
+	},
+	{
+		code: 6078,
+		name: "OnlyPumpPools",
+		msg: "Only canonical pump pools are supported by this instruction"
+	},
+	{
+		code: 6079,
+		name: "CashbackCoinNotSupported",
+		msg: "v2 trades do not support cashback coins; use the v1 instructions"
+	},
+	{
+		code: 6080,
+		name: "MayhemPoolNotSupported",
+		msg: "v2 trades do not support mayhem-mode pools; use the v1 instructions"
+	},
+	{
+		code: 6081,
+		name: "CreatorFeesNotSwept",
+		msg: "creator_fees must be swept before the coin creator changes"
+	},
+	{
+		code: 6082,
+		name: "FeeTiersEmpty",
+		msg: "The fee config tier table is empty"
+	},
+	{
+		code: 6083,
+		name: "FeeConfigTooShort",
+		msg: "The fee config account is shorter than its initialize size"
+	},
+	{
+		code: 6084,
+		name: "MultiHopDiscontinuousPath",
+		msg: "multi-hop: a hop's input mint is neither side of its pool or curve, or the route does not end in user_out_token_account's mint"
+	},
+	{
+		code: 6085,
+		name: "MultiHopCurveRunMismatch",
+		msg: "multi-hop: the balances around the bonding-curve hops do not match the amounts pump reported"
+	},
+	{
+		code: 6086,
+		name: "MultiHopMixedDirection",
+		msg: "multi-hop: every hop must trade in the same direction, all buys or all sells"
+	},
+	{
+		code: 6087,
+		name: "SelfTransferNotAllowed",
+		msg: "A transfer's source is its destination and the signer does not own it"
 	}
 ];
 var types = [
 	{
-		name: "AdminSetCoinCreatorEvent",
+		name: "AdminCtoPoolEvent",
 		type: {
 			kind: "struct",
 			fields: [
 				{
 					name: "timestamp",
 					type: "i64"
-				},
-				{
-					name: "admin_set_coin_creator_authority",
-					type: "pubkey"
 				},
 				{
 					name: "base_mint",
@@ -4895,6 +7408,22 @@ var types = [
 				{
 					name: "new_coin_creator",
 					type: "pubkey"
+				},
+				{
+					name: "is_holder_reward",
+					type: "bool"
+				},
+				{
+					name: "is_cashback_coin",
+					type: "bool"
+				},
+				{
+					name: "old_creator_fee_bps",
+					type: "u64"
+				},
+				{
+					name: "new_creator_fee_bps",
+					type: "u64"
 				}
 			]
 		}
@@ -4975,6 +7504,62 @@ var types = [
 				{
 					name: "is_cashback_coin",
 					type: "bool"
+				}
+			]
+		}
+	},
+	{
+		name: "BoostBuyAndBurnEvent",
+		type: {
+			kind: "struct",
+			fields: [
+				{
+					name: "timestamp",
+					type: "i64"
+				},
+				{
+					name: "mint",
+					type: "pubkey"
+				},
+				{
+					name: "bonding_curve",
+					type: "pubkey"
+				},
+				{
+					name: "pool",
+					type: "pubkey"
+				},
+				{
+					name: "authority",
+					type: "pubkey"
+				},
+				{
+					name: "quote_amount_in_requested",
+					type: "u64"
+				},
+				{
+					name: "quote_amount_in_used",
+					type: "u64"
+				},
+				{
+					name: "base_amount_burned",
+					type: "u64"
+				},
+				{
+					name: "virtual_quote_reserves",
+					type: "i128"
+				},
+				{
+					name: "real_quote_reserves_after",
+					type: "u64"
+				},
+				{
+					name: "base_reserves_after",
+					type: "u64"
+				},
+				{
+					name: "boost_vault_remaining",
+					type: "u64"
 				}
 			]
 		}
@@ -5113,6 +7698,38 @@ var types = [
 				},
 				{
 					name: "cashback",
+					type: "u64"
+				},
+				{
+					name: "buyback_fee_basis_points",
+					type: "u64"
+				},
+				{
+					name: "buyback_fee",
+					type: "u64"
+				},
+				{
+					name: "virtual_quote_reserves",
+					type: "i128"
+				},
+				{
+					name: "can_boost",
+					type: "bool"
+				},
+				{
+					name: "base_supply",
+					type: "u64"
+				},
+				{
+					name: "holder_rewards_bps",
+					type: "u64"
+				},
+				{
+					name: "holder_rewards",
+					type: "u64"
+				},
+				{
+					name: "creator_fee_unclaimed",
 					type: "u64"
 				}
 			]
@@ -5381,6 +7998,18 @@ var types = [
 				{
 					name: "is_mayhem_mode",
 					type: "bool"
+				},
+				{
+					name: "creator_fee_bps",
+					type: "u64"
+				},
+				{
+					name: "can_edit_creator_fee",
+					type: "bool"
+				},
+				{
+					name: "is_holder_reward",
+					type: "bool"
 				}
 			]
 		}
@@ -5551,6 +8180,24 @@ var types = [
 							}
 						}
 					}
+				},
+				{
+					name: "stable_fee_tiers",
+					type: {
+						vec: {
+							defined: {
+								name: "FeeTier"
+							}
+						}
+					}
+				},
+				{
+					name: "exotic_flat_fees",
+					type: {
+						defined: {
+							name: "Fees"
+						}
+					}
 				}
 			]
 		}
@@ -5674,6 +8321,35 @@ var types = [
 				{
 					name: "is_cashback_enabled",
 					type: "bool"
+				},
+				{
+					name: "buyback_fee_recipients",
+					type: {
+						array: [
+							"pubkey",
+							8
+						]
+					}
+				},
+				{
+					name: "buyback_basis_points",
+					type: "u64"
+				},
+				{
+					name: "boost_authority",
+					type: "pubkey"
+				},
+				{
+					name: "boost_enabled",
+					type: "bool"
+				},
+				{
+					name: "creator_fee_configurable",
+					type: "bool"
+				},
+				{
+					name: "max_configurable_creator_fee_bps",
+					type: "u64"
 				}
 			]
 		}
@@ -5716,6 +8392,38 @@ var types = [
 							30
 						]
 					}
+				}
+			]
+		}
+	},
+	{
+		name: "InitBoostEvent",
+		type: {
+			kind: "struct",
+			fields: [
+				{
+					name: "timestamp",
+					type: "i64"
+				},
+				{
+					name: "mint",
+					type: "pubkey"
+				},
+				{
+					name: "bonding_curve",
+					type: "pubkey"
+				},
+				{
+					name: "pool",
+					type: "pubkey"
+				},
+				{
+					name: "virtual_quote_reserves",
+					type: "i128"
+				},
+				{
+					name: "real_quote_reserves_after",
+					type: "u64"
 				}
 			]
 		}
@@ -5782,6 +8490,15 @@ var types = [
 		}
 	},
 	{
+		name: "OptionU64",
+		type: {
+			kind: "struct",
+			fields: [
+				"u64"
+			]
+		}
+	},
+	{
 		name: "Pool",
 		type: {
 			kind: "struct",
@@ -5836,6 +8553,33 @@ var types = [
 				{
 					name: "is_cashback_coin",
 					type: "bool"
+				},
+				{
+					name: "virtual_quote_reserves",
+					docs: [
+						"For non-boost pools, value is 0, so the behavior is identical to legacy pools."
+					],
+					type: "i128"
+				},
+				{
+					name: "creator_fee_bps",
+					type: "u64"
+				},
+				{
+					name: "can_edit_creator_fee",
+					type: "bool"
+				},
+				{
+					name: "is_holder_reward",
+					type: "bool"
+				},
+				{
+					name: "protocol_fees",
+					type: "u64"
+				},
+				{
+					name: "creator_fees",
+					type: "u64"
 				}
 			]
 		}
@@ -5969,6 +8713,38 @@ var types = [
 				{
 					name: "cashback",
 					type: "u64"
+				},
+				{
+					name: "buyback_fee_basis_points",
+					type: "u64"
+				},
+				{
+					name: "buyback_fee",
+					type: "u64"
+				},
+				{
+					name: "virtual_quote_reserves",
+					type: "i128"
+				},
+				{
+					name: "can_boost",
+					type: "bool"
+				},
+				{
+					name: "base_supply",
+					type: "u64"
+				},
+				{
+					name: "holder_rewards_bps",
+					type: "u64"
+				},
+				{
+					name: "holder_rewards",
+					type: "u64"
+				},
+				{
+					name: "creator_fee_unclaimed",
+					type: "u64"
 				}
 			]
 		}
@@ -5996,6 +8772,30 @@ var types = [
 				},
 				{
 					name: "coin_creator",
+					type: "pubkey"
+				}
+			]
+		}
+	},
+	{
+		name: "SetBoostAuthorityEvent",
+		type: {
+			kind: "struct",
+			fields: [
+				{
+					name: "timestamp",
+					type: "i64"
+				},
+				{
+					name: "admin",
+					type: "pubkey"
+				},
+				{
+					name: "old_boost_authority",
+					type: "pubkey"
+				},
+				{
+					name: "new_boost_authority",
 					type: "pubkey"
 				}
 			]
@@ -6092,6 +8892,46 @@ var types = [
 		}
 	},
 	{
+		name: "SweepPoolFeeEvent",
+		type: {
+			kind: "struct",
+			fields: [
+				{
+					name: "timestamp",
+					type: "i64"
+				},
+				{
+					name: "pool",
+					type: "pubkey"
+				},
+				{
+					name: "base_mint",
+					type: "pubkey"
+				},
+				{
+					name: "quote_mint",
+					type: "pubkey"
+				},
+				{
+					name: "recipient",
+					type: "pubkey"
+				},
+				{
+					name: "payer",
+					type: "pubkey"
+				},
+				{
+					name: "amount",
+					type: "u64"
+				},
+				{
+					name: "bucket",
+					type: "u8"
+				}
+			]
+		}
+	},
+	{
 		name: "SyncUserVolumeAccumulatorEvent",
 		type: {
 			kind: "struct",
@@ -6131,6 +8971,30 @@ var types = [
 				{
 					name: "new_admin",
 					type: "pubkey"
+				}
+			]
+		}
+	},
+	{
+		name: "UpdateCreatorFeeConfigEvent",
+		type: {
+			kind: "struct",
+			fields: [
+				{
+					name: "timestamp",
+					type: "i64"
+				},
+				{
+					name: "admin",
+					type: "pubkey"
+				},
+				{
+					name: "creator_fee_configurable",
+					type: "bool"
+				},
+				{
+					name: "max_configurable_creator_fee_bps",
+					type: "u64"
 				}
 			]
 		}

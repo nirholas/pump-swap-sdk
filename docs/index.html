@@ -2,9 +2,9 @@
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>pump-swap-sdk documentation</title>
-<meta name="description" content="Official SDK for interacting with Pump Swap AMM protocol on Solana">
+<meta name="description" content="TypeScript SDK for the Pump Swap AMM on Solana: v2 trades, multi-hop routes, fee sweeps and signed virtual reserves, mirroring @pump-fun/pump-swap-sdk 2.1.0">
 <meta property="og:title" content="pump-swap-sdk documentation">
-<meta property="og:description" content="Official SDK for interacting with Pump Swap AMM protocol on Solana">
+<meta property="og:description" content="TypeScript SDK for the Pump Swap AMM on Solana: v2 trades, multi-hop routes, fee sweeps and signed virtual reserves, mirroring @pump-fun/pump-swap-sdk 2.1.0">
 <meta property="og:type" content="website">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='13'>&#128230;</text></svg>">
 <style>
@@ -70,8 +70,8 @@ footer.site{border-top:1px solid var(--line);padding:28px 0 40px;color:var(--mut
 <section class="hero" style="border:0">
   <span class="eyebrow">nirholas / pump-swap-sdk</span>
   <h1>pump-swap-sdk</h1>
-  <p class="lede">Official SDK for interacting with Pump Swap AMM protocol on Solana</p>
-  <div class="badges"><span class="badge">v1.14.0</span><span class="badge">MIT</span></div>
+  <p class="lede">TypeScript SDK for the Pump Swap AMM on Solana, synced to <code>@pump-fun/pump-swap-sdk</code> 2.1.0 and the October 2026 program.</p>
+  <div class="badges"><span class="badge">v2.1.0</span><span class="badge">MIT</span></div>
   <div class="cta">
     <a class="btn" href="#start">Get started</a>
     <a class="btn ghost" href="https://github.com/nirholas/pump-swap-sdk">View source</a>
@@ -79,20 +79,28 @@ footer.site{border-top:1px solid var(--line);padding:28px 0 40px;color:var(--mut
   <div class="install"><code>npm install @pump-fun/pump-swap-sdk</code><button class="copy" type="button">Copy</button></div>
 </section>
 
-<section id="features"><h2 class="sec">What it does</h2><p class="sub">Capabilities documented in this repository.</p><div class="grid"><div class="card"><h3>Usage</h3><p>See the <a href="https://github.com/nirholas/pump-swap-sdk#readme">full documentation</a> for details.</p></div><div class="card"><h3>Create pool</h3><p>See the <a href="https://github.com/nirholas/pump-swap-sdk#readme">full documentation</a> for details.</p></div><div class="card"><h3>Deposit</h3><p>See the <a href="https://github.com/nirholas/pump-swap-sdk#readme">full documentation</a> for details.</p></div><div class="card"><h3>Swap</h3><p>See the <a href="https://github.com/nirholas/pump-swap-sdk#readme">full documentation</a> for details.</p></div><div class="card"><h3>Withdraw</h3><p>See the <a href="https://github.com/nirholas/pump-swap-sdk#readme">full documentation</a> for details.</p></div><div class="card"><h3>Links</h3><p>See the <a href="https://github.com/nirholas/pump-swap-sdk#readme">full documentation</a> for details.</p></div></div></section>
+<section id="features"><h2 class="sec">What it does</h2><p class="sub">The October 2026 PumpSwap upgrade, covered end to end.</p><div class="grid"><a class="card" href="https://github.com/nirholas/pump-swap-sdk#v2-trades-and-fee-sweeps"><h3>v2 trades</h3><p><code>buy_v2</code>, <code>buy_exact_quote_in_v2</code> and <code>sell_v2</code>: 17 accounts, no remaining accounts. Pass <code>{ v2: true }</code> to any swap builder.</p></a><a class="card" href="https://github.com/nirholas/pump-swap-sdk#v2-trades-and-fee-sweeps"><h3>Fee sweeps</h3><p><code>sweepProtocolFeeInstruction</code> and <code>sweepCreatorFeeInstruction</code> move the pool's fee buckets out. Sweep before a creator claim, CTO or fee-share change.</p></a><a class="card" href="https://github.com/nirholas/pump-swap-sdk#multi-hop-routes"><h3>Multi-hop routes</h3><p><code>multiHopSwapQuote</code> and <code>multiHopSwapInstructions</code> route an exact input across up to six pools and bonding curves with one slippage check.</p></a><a class="card" href="https://github.com/nirholas/pump-swap-sdk#negative-virtual-quote-reserves"><h3>Signed virtual reserves</h3><p><code>virtualQuoteReserves</code> is a signed i128 and often negative. Every quote path adds it with full precision.</p></a><a class="card" href="https://github.com/nirholas/pump-swap-sdk#migration-notes-v2-trades-and-fee-buckets"><h3>New Pool fields</h3><p><code>protocolFees</code>, <code>creatorFees</code>, <code>creatorFeeBps</code>, <code>canEditCreatorFee</code> and <code>isHolderReward</code>, decoded from any pool length.</p></a><a class="card" href="https://github.com/nirholas/pump-swap-sdk#creator-fees"><h3>Creator fees</h3><p>Collect, configure and share coin-creator fees, including holder-reward pools.</p></a></div></section>
 
 <section id="start">
   <h2 class="sec">Get started</h2>
   <p class="sub">Install it, then run your first command.</p>
   <pre><code>npm install @pump-fun/pump-swap-sdk</code></pre>
-  <table><thead><tr><th>Command</th><th>Runs</th></tr></thead><tbody><tr><td><code>npm run build</code></td><td><code>tsup --clean --dts</code></td></tr><tr><td><code>npm run test</code></td><td><code>jest</code></td></tr><tr><td><code>npm run lint</code></td><td><code>eslint src --ext .ts</code></td></tr><tr><td><code>npm run typecheck</code></td><td><code>tsc --noEmit</code></td></tr></tbody></table>
+  <table><thead><tr><th>Command</th><th>Runs</th></tr></thead><tbody><tr><td><code>npm run test</code></td><td><code>jest</code> over <code>src/__tests__</code></td></tr><tr><td><code>npm run lint</code></td><td><code>eslint src --ext .ts</code></td></tr><tr><td><code>npm run typecheck</code></td><td><code>tsc --noEmit</code></td></tr></tbody></table>
   <p><a href="./getting-started.md">Read the full getting started guide</a></p>
 </section>
 
 <section id="examples">
   <h2 class="sec">Examples</h2>
-  <p class="sub">Taken directly from this repository's documentation.</p>
-  <pre><code>npm install @pump-fun/pump-swap-sdk</code></pre>
+  <p class="sub">A v2 buy, and a creator-fee sweep composed with the claim it feeds.</p>
+  <pre><code>const state = await onlineSdk.swapSolanaState(poolKey, user);
+const buy = await PUMP_AMM_SDK.buyQuoteInput(state, quoteAmount, 1, { v2: true });
+
+const sweep = await onlineSdk.sweepCreatorFeeInstruction(poolKey, coinCreator);
+const collectState = await onlineSdk.collectCoinCreatorFeeSolanaState(
+  coinCreator, undefined, state.pool.quoteMint,
+);
+const claim = await PUMP_AMM_SDK.collectCoinCreatorFee(collectState, coinCreator);
+const tx = new Transaction().add(sweep, ...claim);</code></pre>
   <p><a href="./examples.md">More examples</a></p>
 </section>
 
