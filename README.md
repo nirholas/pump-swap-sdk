@@ -711,3 +711,7 @@ Documentation site: **https://nirholas.github.io/pump-swap-sdk/**
 
 - [Getting started](docs/getting-started.md) covers install and first run.
 - [Examples](docs/examples.md) has copy-paste snippets for v2 trades, sweeps and multi-hop routes.
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=nirholas/pump-swap-sdk&type=Date)](https://www.star-history.com/#nirholas/pump-swap-sdk&Date)
