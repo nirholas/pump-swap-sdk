@@ -1,0 +1,28 @@
+# pump-swap-sdk
+
+> SDK for interacting with Pump Swap [PumpFun] AMM protocol on Solana
+
+pump-swap-sdk is an open-source repository by nirholas, part of the three.ws ecosystem.
+
+## Docs
+
+- [README](https://github.com/nirholas/pump-swap-sdk/blob/HEAD/README.md): install, usage and reference
+- [Installation](https://github.com/nirholas/pump-swap-sdk/blob/HEAD/README.md#installation)
+- [Usage](https://github.com/nirholas/pump-swap-sdk/blob/HEAD/README.md#usage)
+- [Create pool](https://github.com/nirholas/pump-swap-sdk/blob/HEAD/README.md#create-pool)
+- [Deposit](https://github.com/nirholas/pump-swap-sdk/blob/HEAD/README.md#deposit)
+- [Swap](https://github.com/nirholas/pump-swap-sdk/blob/HEAD/README.md#swap)
+- [v2 trades and fee sweeps](https://github.com/nirholas/pump-swap-sdk/blob/HEAD/README.md#v2-trades-and-fee-sweeps)
+- [Multi-hop routes](https://github.com/nirholas/pump-swap-sdk/blob/HEAD/README.md#multi-hop-routes)
+- [Withdraw](https://github.com/nirholas/pump-swap-sdk/blob/HEAD/README.md#withdraw)
+- [AGENTS.md](https://github.com/nirholas/pump-swap-sdk/blob/HEAD/AGENTS.md): guidance for coding agents
+- [Full text for LLMs](https://github.com/nirholas/pump-swap-sdk/blob/HEAD/llms-full.txt): the README inlined
+
+## Project
+
+- [Source](https://github.com/nirholas/pump-swap-sdk)
+- [Issues](https://github.com/nirholas/pump-swap-sdk/issues)
+- [Discussions](https://github.com/nirholas/pump-swap-sdk/discussions)
+- [Homepage](https://github.com/nirholas/pump-swap-sdk)
+- [three.ws](https://three.ws): the platform this is part of
+- [All repositories by nirholas](https://github.com/nirholas/nirholas#readme)
