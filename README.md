@@ -712,7 +712,7 @@ MIT. See [LICENSE](LICENSE).
 
 ## Documentation
 
-Documentation site: **https://nirholas.github.io/pump-swap-sdk/**
+Documentation site: **https://pump-swap-sdk.modelcontextprotocol.name/**
 
 - [Getting started](docs/getting-started.md) covers install and first run.
 - [Examples](docs/examples.md) has copy-paste snippets for v2 trades, sweeps and multi-hop routes.
