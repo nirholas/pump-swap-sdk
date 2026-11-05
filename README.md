@@ -5,6 +5,8 @@
 <!-- /three.ws:badges -->
 
 
+**Docs: https://pump-swap-sdk.modelcontextprotocol.name/** · [Getting started](docs/getting-started.md) · [Examples](docs/examples.md)
+
 TypeScript SDK for the Pump Swap AMM program (`pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA`).
 
 - `PumpAmmSdk` (singleton `PUMP_AMM_SDK`) builds instructions and decodes accounts fully
