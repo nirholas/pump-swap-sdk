@@ -1,0 +1,1 @@
+{"name":"pumpswap-sdk","version":"2.1.0","description":"Teaches an agent the PumpSwap AMM TypeScript SDK: quotes, swap and liquidity instructions, with a confirm-before-sending rule.","author":{"name":"nirholas"},"repository":"https://github.com/nirholas/pump-swap-sdk","homepage":"https://sdk.pumpk.it/","license":"MIT","keywords":["solana","pumpswap","amm","sdk","typescript"]}
